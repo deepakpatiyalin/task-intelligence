@@ -3709,6 +3709,17 @@ function renderOutcomePane(){
 if (hasPassword() && isLocked()) {
   lockApp();
 }
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const hasPassword = !!localStorage.getItem("appPwdHash");
+
+  if (hasPassword) {
+    lockApp();          // 🔒 force lock
+    await promptUnlock(); // 🔑 ask password
+  } else {
+    unlockApp();        // no password → free access
+  }
+});
 </script>
 <!-- ===== APP LOCK SCREEN ===== -->
 <div id="lockScreen" style="
