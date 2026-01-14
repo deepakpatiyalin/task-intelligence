@@ -1006,7 +1006,7 @@ async function hash(text){
     .map(b => b.toString(16).padStart(2,"0"))
     .join("");
 }
-async ffunction handleSetPassword(){
+async function handleSetPassword(){
   lockApp();
   notify("Enter new password to set it", "info", 4000);
 }
