@@ -1032,14 +1032,14 @@ async function setPassword(pwd){
 }
 
 function lockApp(){
-  localStorage.setItem(LOCK_KEY, "1");
+  localStorage.setItem("appLocked", "1");
   document.body.classList.add("locked");
 }
 
 function unlockApp(){
-  resetInactivityTimer();
-  localStorage.removeItem(LOCK_KEY);
+  localStorage.removeItem("appLocked");
   document.body.classList.remove("locked");
+  resetInactivityTimer();
 }
 
 async function promptUnlock(){
