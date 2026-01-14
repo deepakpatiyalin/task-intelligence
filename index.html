@@ -998,6 +998,10 @@ let inactivityTimer;
   document.addEventListener(evt, resetInactivityTimer, { passive:true })
 );
 
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) lockApp();
+});
+	
 function resetInactivityTimer(){
   clearTimeout(inactivityTimer);
   inactivityTimer = setTimeout(() => {
