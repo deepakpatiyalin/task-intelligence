@@ -846,13 +846,7 @@ body.locked #lockScreen {
     <button class="secondary" id="btnExport">⬇ Export</button>
     <button class="secondary" id="btnImport">⬆ Import</button>
     <button class="secondary" id="btnTheme">🌙</button>
-    <button onclick="
-  const p = prompt('Set / Change password');
-  if (p) {
-    setPassword(p);
-    notify("Password set", "success");
-  }
-">🔑 Set Password</button>
+    <button onclick="handleSetPassword()">🔑 Set Password</button>
 <button onclick="
   if (confirm('Remove password?')) {
     localStorage.removeItem('appPwd');
