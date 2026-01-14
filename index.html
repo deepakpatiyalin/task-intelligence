@@ -1011,7 +1011,7 @@ async function handleSetPassword(){
   notify("Enter new password to set it", "info", 4000);
 }
 	
-async function unlockWithPassword(){
+async function promptUnlock(){
   const stored = localStorage.getItem(PWD_KEY);
   if (!stored) return unlockApp();
 
