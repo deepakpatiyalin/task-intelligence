@@ -1006,15 +1006,32 @@ async function hash(text){
     .map(b => b.toString(16).padStart(2,"0"))
     .join("");
 }
-async function handleSetPassword(){
-	notify("Set Password ", "success", 4000);
-  const p = prompt("Set / Change password");
-  if (!p) return;
-
-  await setPassword(p);
-  notify("Password set successfully", "success", 4000);
+async ffunction handleSetPassword(){
+  lockApp();
+  notify("Enter new password to set it", "info", 4000);
 }
+	
+async function unlockWithPassword(){
+  const stored = localStorage.getItem(PWD_KEY);
+  if (!stored) return unlockApp();
 
+  const pwd = pwdInput.value;
+  if (!pwd) return;
+
+  const h = await hash(pwd);
+
+  if (h === stored){
+    pwdInput.value = "";
+    lockError.textContent = "";
+    unlockApp();
+    resetInactivityTimer();
+  } else {
+    lockError.textContent = "Incorrect password";
+    pwdInput.value = "";
+    pwdInput.focus();
+  }
+}
+	
 function handleRemovePassword(){
 	notify("Remove Password ", "success", 4000);
   if (!confirm("Remove password?")) return;
@@ -1043,22 +1060,6 @@ function unlockApp(){
   resetInactivityTimer();
 }
 
-async function promptUnlock(){
-  const stored = localStorage.getItem(PWD_KEY);
-  if (!stored) return unlockApp(); // no password set
-
-  const pwd = prompt("Enter app password");
-  if (!pwd) return;
-
-  const h = await hash(pwd);
-  if (h === stored){
-    unlockApp();
-    resetInactivityTimer();
-  } else {
-    alert("Incorrect password");
-    lockApp();
-  }
-}
 
 document.addEventListener("DOMContentLoaded", () => {
   if (localStorage.getItem(PWD_KEY)) {
