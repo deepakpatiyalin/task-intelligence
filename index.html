@@ -991,6 +991,20 @@ body.locked #lockScreen {
 const LOCK_KEY = "appLocked";
 const PWD_KEY  = "appPwdHash";
 
+const INACTIVITY_MINUTES = 10;
+let inactivityTimer;
+
+["click","keydown","mousemove","touchstart"].forEach(evt =>
+  document.addEventListener(evt, resetInactivityTimer, { passive:true })
+);
+
+function resetInactivityTimer(){
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => {
+    lockApp();
+    notify("App locked due to inactivity", "warn", 5000);
+  }, INACTIVITY_MINUTES * 60 * 1000);
+}
 // Simple SHA-256 hash
 async function hash(text){
   const enc = new TextEncoder().encode(text);
