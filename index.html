@@ -1006,6 +1006,7 @@ async function hash(text){
     .join("");
 }
 async function handleSetPassword(){
+	notify("Set Password ", "success", 4000);
   const p = prompt("Set / Change password");
   if (!p) return;
 
@@ -1014,6 +1015,7 @@ async function handleSetPassword(){
 }
 
 function handleRemovePassword(){
+	notify("Remove Password ", "success", 4000);
   if (!confirm("Remove password?")) return;
 
   localStorage.removeItem("appPwdHash");
