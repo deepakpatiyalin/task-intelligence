@@ -828,8 +828,9 @@ body.locked #lockScreen {
   background: var(--card);
   padding: 24px;
   border-radius: 12px;
-  text-align: center;
+  text-align:center;
 }
+	
 </style>
 </head>
 
@@ -1012,15 +1013,16 @@ async function handleSetPassword(){
   notify("Password set successfully", "success", 4000);
 }
 
-	function handleRemovePassword(){
-  if (!confirm("Remove password protection?")) return;
+function handleRemovePassword(){
+  if (!confirm("Remove password?")) return;
 
   localStorage.removeItem("appPwdHash");
   localStorage.removeItem("appLocked");
-  unlockApp();
 
+  unlockApp();
   notify("Password removed", "success", 4000);
 }
+	
 async function setPassword(pwd){
   const h = await hash(pwd);
   localStorage.setItem(PWD_KEY, h);
