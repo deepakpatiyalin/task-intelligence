@@ -847,14 +847,7 @@ body.locked #lockScreen {
     <button class="secondary" id="btnImport">⬆ Import</button>
     <button class="secondary" id="btnTheme">🌙</button>
     <button onclick="handleSetPassword()">🔑 Set Password</button>
-<button onclick="
-  if (confirm('Remove password?')) {
-    localStorage.removeItem('appPwd');
-    localStorage.removeItem('appLocked');
-    notify("Password removed", "success");
-    
-  }
-">🗑 Remove Password</button>
+	<button onclick="handleRemovePassword()">🗑 Remove Password</button>
   </div>
 </header>
 
@@ -1018,7 +1011,16 @@ async function handleSetPassword(){
   await setPassword(p);
   notify("Password set successfully", "success", 4000);
 }
-	
+
+	function handleRemovePassword(){
+  if (!confirm("Remove password protection?")) return;
+
+  localStorage.removeItem("appPwdHash");
+  localStorage.removeItem("appLocked");
+  unlockApp();
+
+  notify("Password removed", "success", 4000);
+}
 async function setPassword(pwd){
   const h = await hash(pwd);
   localStorage.setItem(PWD_KEY, h);
