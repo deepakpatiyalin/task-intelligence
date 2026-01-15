@@ -71,8 +71,18 @@ body{
 }
 
 #sidebar {
-  flex-shrink: 0;
-  height: 100%;
+  position: sticky;
+  top: 58px;                 /* height of header */
+  height: calc(100vh - 66px);
+  overflow-y: auto;          /* ✅ vertical scroll */
+  overflow-x: hidden;
+
+  padding: 12px;
+  background: var(--card);
+  border-radius: 12px;
+  margin: 4px;
+
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
 }
 
 #content {
