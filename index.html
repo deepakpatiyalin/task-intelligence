@@ -64,10 +64,14 @@ body{
   color:var(--fg);
 }
 
-#main {
-  height: 100vh;
-  display: flex;
-  overflow: hidden;
+main{
+  display:grid;
+  grid-template-columns:240px 1fr;
+  height:calc(100vh - 50px);
+  transition:.2s;
+}
+main.collapsed{
+  grid-template-columns:48px 1fr;
 }
 
 #sidebar {
