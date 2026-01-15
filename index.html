@@ -76,9 +76,10 @@ main.collapsed{
 
 #sidebar {
   position: sticky;
-  top: 58px;                 /* height of header */
-  height: calc(100vh - 66px);
-  overflow-y: auto;          /* ✅ vertical scroll */
+  top: 58px; /* header height */
+
+  height: calc(100vh - 66px); /* header + margin */
+  overflow-y: auto;           /* ✅ THIS enables scroll */
   overflow-x: hidden;
 
   padding: 12px;
