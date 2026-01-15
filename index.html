@@ -2208,7 +2208,7 @@ function copyWeeklySummary(){
   });
 }
 	
-function renderAdmin(){
+/*function renderAdmin(){
 	normalizeMeetings();
   content.innerHTML = `
     <div class="page-header">
@@ -2250,9 +2250,9 @@ function renderAdmin(){
       `).join("")}
     </div>
   `;
-}
-/* function renderAdmin(){
- // normalizeMeetings();
+}*/
+function renderAdmin(){
+ normalizeMeetings();
 
   // 🔍 Filter meetings
   let meetings = [...db.meetings];
@@ -2341,7 +2341,7 @@ function renderAdmin(){
         : ""}
     </div>
   `;
-}*/
+}
 
 function archiveMeeting(name){
   const m = db.meetings.find(x => x.name === name);
