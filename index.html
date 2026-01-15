@@ -2274,6 +2274,7 @@ function copyWeeklySummary(){
   `;
 }*/
 function renderAdmin(){
+console.log("renderAdmin v2 (with search + archive)");
  normalizeMeetings();
 
   // 🔍 Filter meetings
@@ -2943,9 +2944,10 @@ let aiReviewParsed = null;
 
 /* ================= ADMIN EXTENSION ================= */
 /* Override renderAdmin SAFELY by wrapping original */
-const _renderAdmin = renderAdmin;
+/*const _renderAdmin = renderAdmin;
 renderAdmin = function(){
-  content.innerHTML = `
+  _renderAdmin(); 
+/*  content.innerHTML = `
     <div class="page-header">
       <h2>Manage Meetings</h2>
       <button onclick="addMeeting()">＋ Add Meeting</button>
@@ -2986,7 +2988,7 @@ renderAdmin = function(){
       `).join("")}
     </div>
   `;
-};
+};*/
 
 
 /* ================= TRANSCRIPT MODAL ================= */
