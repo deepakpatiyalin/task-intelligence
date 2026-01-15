@@ -1243,7 +1243,7 @@ function renderSidebar() {
     <h3 class="label">Meetings</h3>
     
 ${db.meetings.map(m => {
-	 .filter(m => !m.archived)
+	// .filter(m => !m.archived)
   const active = isMeetingActive(m.name);
   return `
     <div class="item
