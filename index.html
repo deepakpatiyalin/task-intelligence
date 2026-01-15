@@ -2197,7 +2197,16 @@ function copyWeeklySummary(){
 }
 
 /* ================= ADMIN ================= */
+	function normalizeMeetings(){
+  db.meetings.forEach(m => {
+    if (typeof m.archived !== "boolean") {
+      m.archived = false;
+    }
+  });
+}
+	
 function renderAdmin(){
+	normalizeMeetings();
   content.innerHTML = `
     <div class="page-header">
       <h2>Manage Meetings</h2>
