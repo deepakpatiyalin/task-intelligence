@@ -2342,6 +2342,30 @@ function renderAdmin(){
   `;
 }
 
+function archiveMeeting(name){
+  const m = db.meetings.find(x => x.name === name);
+  if (!m) return;
+
+  if (!confirm(`Archive meeting "${name}"?`)) return;
+
+  m.archived = true;
+  saveDB();
+  notify("Meeting archived", "success", 4000);
+  renderAdmin();
+  renderSidebar();
+}
+
+function restoreMeeting(name){
+  const m = db.meetings.find(x => x.name === name);
+  if (!m) return;
+
+  m.archived = false;
+  saveDB();
+  notify("Meeting restored", "success", 4000);
+  renderAdmin();
+  renderSidebar();
+}
+	
 function addMeeting() {
   const n = prompt("Meeting name");
   if (!n || db.meetings.some(m=>m.name===n)) return;
