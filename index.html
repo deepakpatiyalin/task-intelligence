@@ -982,6 +982,8 @@ const PWD_KEY  = "appPwdHash";
 
 const INACTIVITY_MINUTES = 10;
 let inactivityTimer;
+let meetingSearchText = "";
+let showArchivedMeetings = false;
 
 ["click","keydown","mousemove","touchstart"].forEach(evt =>
   document.addEventListener(evt, resetInactivityTimer, { passive:true })
@@ -2205,7 +2207,7 @@ function copyWeeklySummary(){
   });
 }
 	
-function renderAdmin(){
+/*function renderAdmin(){
 	normalizeMeetings();
   content.innerHTML = `
     <div class="page-header">
@@ -2245,6 +2247,97 @@ function renderAdmin(){
           </div>
         </div>
       `).join("")}
+    </div>
+  `;
+}*/
+function renderAdmin(){
+  normalizeMeetings();
+
+  // 🔍 Filter meetings
+  let meetings = [...db.meetings];
+
+  // Search filter
+  if (meetingSearchText) {
+    const q = meetingSearchText.toLowerCase();
+    meetings = meetings.filter(m =>
+      m.name.toLowerCase().includes(q)
+    );
+  }
+
+  // Archive filter
+  meetings = meetings.filter(m =>
+    showArchivedMeetings ? true : !m.archived
+  );
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h2>Manage Meetings</h2>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <input
+          type="text"
+          placeholder="Search meetings…"
+          value="${meetingSearchText}"
+          oninput="meetingSearchText=this.value; renderAdmin()"
+        />
+
+        <label style="font-size:13px">
+          <input
+            type="checkbox"
+            ${showArchivedMeetings ? "checked" : ""}
+            onchange="showArchivedMeetings=this.checked; renderAdmin()"
+          />
+          Show archived
+        </label>
+
+        <button onclick="addMeeting()">＋ Add Meeting</button>
+      </div>
+    </div>
+
+    <div class="meeting-list">
+      ${meetings.map(m => `
+        <div class="meeting-row ${m.archived ? 'archived' : ''}">
+          <div class="meeting-name">
+            <span class="health-dot ${getMeetingHealth(m.name)}"></span>
+            ${m.name}
+            ${m.archived ? `<span class="badge-muted">Archived</span>` : ""}
+            ${m.name === "My Tasks"
+              ? `<span class="badge-muted">Default</span>`
+              : ""}
+          </div>
+
+          <div class="meeting-actions">
+            ${!m.archived ? `
+              <button class="btn-ghost"
+                onclick="analyzeMeeting('${m.name}')">🧠 Analyze</button>
+
+              <button class="btn-ghost"
+                onclick="openMeetingOutcomes('${m.name}')">📌 Outcomes</button>
+
+              <button class="btn-ghost"
+                onclick="openMeetingTimeline('${m.name}')">🧾 Timeline</button>
+            ` : ``}
+
+            ${m.name !== "My Tasks" ? `
+              ${m.archived ? `
+                <button class="btn-ghost"
+                  onclick="restoreMeeting('${m.name}')">♻ Restore</button>
+              ` : `
+                <button class="btn-ghost"
+                  onclick="archiveMeeting('${m.name}')">📦 Archive</button>
+
+                <button class="icon"
+                  title="Rename"
+                  onclick="renameMeeting('${m.name}')">✏</button>
+              `}
+            ` : ""}
+          </div>
+        </div>
+      `).join("")}
+
+      ${!meetings.length
+        ? `<div class="empty-state">No meetings found</div>`
+        : ""}
     </div>
   `;
 }
