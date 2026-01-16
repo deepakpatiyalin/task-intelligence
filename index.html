@@ -2334,7 +2334,7 @@ console.log("renderAdmin v2 (with search + archive)");
           <div class="meeting-actions">
             ${!m.archived ? `
               <button class="btn-ghost"
-                onclick="analyzeMeeting('${m.name}')">🧠 Analyze</button>
+                onclick="openTranscript('${m.name}')">🧠 Analyze</button>
 
               <button class="btn-ghost"
                 onclick="openMeetingOutcomes('${m.name}')">📌 Outcomes</button>
