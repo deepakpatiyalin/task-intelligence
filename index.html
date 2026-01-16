@@ -1,0 +1,3910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Task Intelligence - Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+  <text x='50' y='68' font-size='72' text-anchor='middle'>🧠</text>
+</svg>">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#3b82f6">
+<!-- Google Product Sans -->
+<link href="https://fonts.googleapis.com/css2?family=Product+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+<style>
+/* ===== Visual Confidence Cues ===== */
+html, body {
+  height: 100%;
+  overflow: hidden;   /* ⛔ stop full-page scrolling */
+}
+
+@keyframes pulse-green {
+  0%   { background-color: rgba(34,197,94,0.0); }
+  50%  { background-color: rgba(34,197,94,0.15); }
+  100% { background-color: rgba(34,197,94,0.0); }
+}
+
+@keyframes pulse-amber {
+  0%   { background-color: rgba(245,158,11,0.0); }
+  50%  { background-color: rgba(245,158,11,0.15); }
+  100% { background-color: rgba(245,158,11,0.0); }
+}
+
+.task-just-closed {
+  animation: pulse-green 0.3s ease-out;
+}
+
+.outcome-just-updated {
+  animation: pulse-amber 0.3s ease-out;
+}
+
+/* Smooth color transitions */
+.note,
+tr {
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+/* ================= THEME ================= */
+:root{
+  --bg:#f8fafc;--fg:#0f172a;--muted:#64748b;
+  --card:#ffffff;--border:#e2e8f0;--accent:#2563eb;--danger:#dc2626;
+  --ns:#ffffff;--ip:#e0f2fe;--pd:#fef3c7;--cl:#dcfce7;--over:#fee2e2;
+}
+[data-theme="dark"]{
+  --bg:#0f172a;--fg:#e5e7eb;--muted:#94a3b8;
+  --card:#020617;--border:#1e293b;--accent:#3b82f6;
+  --ns:#020617;--ip:#082f49;--pd:#3f2e04;--cl:#064e3b;--over:#7f1d1d;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:"Product Sans",system-ui;
+  background:var(--bg);
+  color:var(--fg);
+}
+
+main{
+  display:grid;
+  grid-template-columns:240px 1fr;
+  height:calc(100vh - 50px);
+  transition:.2s;
+}
+main.collapsed{
+  grid-template-columns:48px 1fr;
+}
+
+#sidebar {
+  position: sticky;
+  top: 58px; /* header height */
+
+  height: calc(100vh - 66px); /* header + margin */
+  overflow-y: auto;           /* ✅ THIS enables scroll */
+  overflow-x: hidden;
+
+  padding: 12px;
+  background: var(--card);
+  border-radius: 12px;
+  margin: 4px;
+
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+#sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+#sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+#content {
+  flex: 1;
+  overflow-y: auto;
+  transition: margin-right 0.25s ease;
+  height: 100%;
+  padding-bottom: 60px;
+}
+
+/* ================= HEADER ================= */
+header{
+  position:sticky;
+  top:0;
+  z-index:30;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px 16px;
+  border-bottom:1px solid var(--border);
+  background:var(--bg);
+   box-shadow:0 2px 8px rgba(0,0,0,0.05);
+}
+button{
+  font-family:inherit;
+  background:var(--accent);
+  color:#fff;
+  border:none;
+  padding:8px 14px;
+  border-radius:10px;
+  cursor:pointer;
+  transition:transform .05s ease, box-shadow .05s ease;
+}
+
+button:active{
+  transform:scale(.97);
+}
+button.secondary{
+  background:none;
+  color:var(--fg);
+  border:1px solid var(--border);
+}
+button.danger{background:var(--danger)}
+button.icon{
+  background:none;
+  border:none;
+  cursor:pointer;
+}
+button.icon:hover{color:var(--danger)}
+
+button.icon:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ================= LAYOUT ================= */
+main{
+  display:grid;
+  grid-template-columns:240px 1fr;
+  height:calc(100vh - 50px);
+  transition:.2s;
+}
+main.collapsed{
+  grid-template-columns:48px 1fr;
+}
+
+/* ================= SIDEBAR ================= */
+aside{
+  position:sticky;
+  top:58px;
+  height:calc(100vh - 66px);
+  padding:12px;
+  overflow-y:auto;
+  background:var(--card);
+  border-radius:12px;
+  margin:4px;
+  box-shadow:0 8px 24px rgba(0,0,0,0.08);
+}
+.sidebar-toggle{
+  cursor:pointer;
+  margin-bottom:8px;
+  font-size:14px;
+}
+aside .label{display:inline}
+main.collapsed aside .label{display:none}
+
+aside h3{
+  font-size:12px;
+  color:var(--muted);
+  margin-top:16px;
+  font-weight:600;
+}
+aside .item{
+  font-size:14px;
+  padding:6px;
+  border-radius:4px;
+  cursor:pointer;
+}
+aside .item.inactive {
+  opacity: 0.4;
+}
+
+aside .item.inactive:hover {
+  opacity: 0.7;
+}
+aside .item.active,
+aside .item:hover{
+  background:var(--border);
+}
+
+/* ================= CONTENT ================= */
+section{
+  padding:16px;
+  overflow:auto;
+}
+section > h2 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+section {
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.05);
+}
+/* ================= TABLE ================= */
+table{
+  width:100%;
+  border-collapse:collapse;
+  border-spacing: 0 6px;
+  border-collapse: separate;
+}
+th,td{
+  padding:10px;
+  border-bottom:1px solid var(--border);
+  font-size:14px;
+}
+tr.not-started{background:var(--ns)}
+tr.in-progress{background:var(--ip)}
+tr.pending{background:var(--pd)}
+tr.closed{background:var(--cl)}
+tr.overdue{background:var(--over)}
+
+input,select,textarea{
+  font-family:inherit;
+  padding:6px;
+}
+
+
+tr {
+  border-radius: 8px;
+}
+
+tr td:first-child {
+  border-top-left-radius: 8px;
+  border-bottom-left-radius: 8px;
+}
+
+tr td:last-child {
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
+/* ================= FILTERS ================= */
+.filters {
+  display: flex;
+  flex-direction: row;          /* ✅ force horizontal */
+  align-items: center;          /* vertically center */
+  gap: 10px;
+  flex-wrap: wrap;              /* wraps nicely on small screens */
+  margin-bottom: 12px;
+}
+.filters label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tag-pill{
+  padding:4px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  cursor:pointer;
+  font-size:12px;
+}
+.tag-pill.active{
+  background:var(--accent);
+  color:#fff;
+  border-color:var(--accent);
+}
+filters.hideClosed = true;   // ✅ default ON
+
+/* ================= BADGE ================= */
+.badge{
+  background:#dc2626;
+  color:#fff;
+  border-radius:999px;
+  padding:2px 6px;
+  font-size:11px;
+  margin-left:6px;
+}
+
+/* ================= RIGHT PANE ================= */
+#rightPane h3 {
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
+#paneMeta {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/*#rightPane{
+  position:fixed;
+  top:0;
+  right:-420px;
+  width:420px;
+  height:100%;
+  background:var(--card);
+  border-left:1px solid var(--border);
+  padding:16px;
+  transition:.25s;
+  z-index:40;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;  
+}*/
+
+#rightPane {
+  position: fixed;
+  top: 56px;
+  bottom: 20px;	
+  right: 0;
+
+  width: 360px;
+  height: 100vh;
+
+  display: none;            /* closed by default */
+  flex-direction: column;
+
+  background: var(--panel-bg);
+  border-left: 1px solid var(--border-color);
+
+  overflow: hidden;         /* ⛔ pane itself NEVER scrolls */
+  z-index: 100;
+}
+
+body.right-pane-open #rightPane {
+  display: flex;   /* ✅ MUST be flex */
+}
+
+body.right-pane-open #content {
+  margin-right: 360px;
+}
+
+#paneBody {
+  flex: 1;                  /* MUST be present */
+  min-height: 0;            /* 🔥 CRITICAL */
+  overflow-y: auto;         /* ✅ THIS scrolls */
+  overflow-x: hidden;
+  padding: 12px;
+}
+
+#rightPane.open{right:0}
+
+#rightPane > *:not(#paneBody) {
+  flex-shrink: 0;
+}
+
+#rightPane textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.note{
+  border:1px solid var(--border);
+  padding:10px 12px;
+  border-radius:10px;
+  margin-bottom:10px;
+  font-size:13px;
+  background: var(--card);
+}
+.note small{color:var(--muted)}
+.note.unread {
+  background: var(--over);           /* amber red */
+  border-left: 4px solid #dc2626;
+}
+
+.note.read {
+  background: var(--cl);             /* amber green */
+  border-left: 4px solid #16a34a;
+}
+
+.note button.icon {
+  float: right;
+  font-size: 16px;
+  margin-left: 6px;
+  cursor: pointer;
+}
+
+/* ===== Outcome Toggle Switch ===== */
+.toggle {
+  position: relative;
+  width: 36px;
+  height: 18px;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.toggle input {
+  display: none;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: #cbd5e1;
+  border-radius: 999px;
+  transition: 0.2s;
+}
+
+.toggle-slider::before {
+  content: "";
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  top: 2px;
+  background: white;
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.toggle input:checked + .toggle-slider {
+  background: #16a34a;
+}
+
+.toggle input:checked + .toggle-slider::before {
+  transform: translateX(18px);
+}
+
+/* ================= MODALS ================= */
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.4);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:50;
+}
+.modal-content{
+  background:var(--card);
+  padding:16px;
+  width:600px;
+  border-radius:8px;
+}
+.error{
+  color:var(--danger);
+  font-size:12px;
+  margin-top:6px;
+}
+.outcome-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Show actions on hover */
+.note:hover .outcome-actions {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ===== Manage Meetings Page ===== */
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.meeting-list {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--card);
+}
+
+.meeting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.meeting-row:last-child {
+  border-bottom: none;
+}
+
+.meeting-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.badge-muted {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--border);
+  color: var(--muted);
+}
+
+.meeting-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Ghost buttons for secondary actions */
+.btn-ghost {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.btn-ghost:hover {
+  background: var(--border);
+}
+
+/* Icon buttons already exist, just soften */
+.meeting-actions .icon {
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.meeting-actions .icon.danger:hover {
+  background: rgba(220,38,38,0.1);
+}
+
+/* ===== Inline Task Quick Actions ===== */
+
+.task-actions {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+tr:hover .quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ===== Meeting Health Indicators ===== */
+
+.health-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.health-dot.healthy {
+  background: #22c55e; /* green */
+}
+
+.health-dot.attention {
+  background: #f59e0b; /* amber */
+}
+
+.health-dot.risk {
+  background: #dc2626; /* red */
+}
+
+/* ===== AI Modal Vertical Scroll ===== */
+
+#aiModal .modal-content {
+  max-height: 80vh;        /* stay within viewport */
+  overflow-y: auto;       /* enable vertical scroll */
+}
+
+#aiPreview {
+  max-height: 300px;      /* scroll preview separately if large */
+  overflow-y: auto;
+}
+
+/* ===== Meeting Timeline ===== */
+
+.timeline {
+  border-left: 2px solid var(--border);
+  padding-left: 16px;
+}
+
+.timeline-item {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.timeline-icon {
+  width: 24px;
+  text-align: center;
+}
+
+.timeline-content {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.timeline-text {
+  font-size: 14px;
+}
+
+.timeline-ts {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ===== Right Pane Date Grouping ===== */
+
+.date-group {
+  margin-bottom: 18px;
+}
+
+.date-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 4px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  z-index: 2;
+}
+/* ===== Outcome Right Pane Enhancements ===== */
+
+.outcome-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.outcome-filters button {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+  cursor: pointer;
+}
+
+.outcome-filters button.active {
+  background: var(--accent);
+  color: white;
+}
+
+.date-header {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chevron {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.timeline-summary {
+  margin-top: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.timeline-signal {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-style: italic;
+}
+/* ===== AI Timeline Summary ===== */
+
+.ai-summary {
+  border-left: 4px solid var(--accent);
+  background: var(--card);
+}
+
+.ai-summary .timeline-summary {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ai-summary.clickable {
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.ai-summary.clickable:hover {
+  background: rgba(0,0,0,0.03);
+}
+
+.timeline-details {
+  margin-top: 10px;
+    background: var(--border);
+}
+.ai-summary::after {
+  content: "▼ Click to expand";
+  float: right;
+  font-size: 11px;
+  opacity: 0.6;
+}
+/* ===== Toast Notifications ===== */
+
+#toastContainer {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  width: 320px;
+  max-height: 40vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9999;
+}
+
+.toast {
+  /*background: var(--card, #1f2933);*/
+  background: #D3D3D3;
+  color: var(--toast-text, var(--text, #333333));
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  animation: slideIn 0.25s ease;
+}
+
+.toast.info   { border-left: 4px solid #3b82f6; }
+.toast.success{ border-left: 4px solid #22c55e; }
+.toast.warn   { border-left: 4px solid #f59e0b; }
+.toast.error  { border-left: 4px solid #ef4444; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.modal-content.scrollable {
+  max-height: 80vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.announcement-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.announcement-card {
+  background: var(--panel-bg, #fff);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.announcement-card h4 {
+  margin: 0 0 6px;
+}
+
+.empty-state {
+  opacity: 0.6;
+  padding: 24px;
+  text-align: center;
+}
+
+.tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #e5e7eb;
+}
+.highlight {
+  background: #fde68a;      /* amber */
+  color: #7c2d12;           /* amber-red text */
+  padding: 0 2px;
+  border-radius: 3px;
+}
+.filters label {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+	body.locked #main,
+body.locked header,
+body.locked #rightPane {
+  pointer-events: none;
+  filter: blur(4px);
+}
+
+#lockScreen {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  z-index: 99999;
+}
+
+body.locked #lockScreen {
+  display: flex;
+}
+
+.lock-box {
+  background: var(--card);
+  padding: 24px;
+  border-radius: 12px;
+  text-align:center;
+}
+	
+</style>
+</head>
+
+<body>
+
+<!-- ================= HEADER ================= -->
+<header>
+  <strong>🧠 Task Intelligence</strong>
+ <small style="margin-left:8px;color:var(--muted)">v2.1</small>
+    <div id="headerScorecard"></div>
+  </div>
+  <div>
+    <button id="btnNewTask">➕ New Task</button>
+    <button class="secondary" id="btnExport">⬇ Export</button>
+    <button class="secondary" id="btnImport">⬆ Import</button>
+    <button class="secondary" id="btnTheme">🌙</button>
+    <button onclick="handleSetPassword()">🔑 Set Password</button>
+	<button onclick="handleRemovePassword()">🗑 Remove Password</button>
+  </div>
+</header>
+
+<!-- ================= MAIN LAYOUT ================= -->
+<main id="main">
+  <aside id="sidebar"></aside>
+  <section id="content"></section>
+</main>
+
+<!-- ================= RIGHT PANE ================= -->
+<div id="rightPane">
+  <button class="icon" id="btnClosePane">✖</button>
+  <h3 id="paneTitle"></h3>
+  <small id="paneMeta"></small>
+  <div class="pane-actions">
+  <button class="secondary" onclick="generateMOM('latest')">
+    📝 MOM (Latest)
+  </button>
+  <button class="secondary" onclick="generateMOM('all')">
+    📄 MOM (All)
+  </button>
+</div>
+  <hr>
+  <div id="paneBody"></div>
+</div>
+
+<div class="modal" id="momModal">
+  <div class="modal-content scrollable">
+    <h3>📄 Minutes of Meeting</h3>
+
+    <textarea id="momText"
+      style="width:100%;min-height:300px;font-family:monospace"></textarea>
+
+<div style="margin-top:12px;display:flex;gap:8px">
+  <button onclick="copyMOM()">📋 Copy MOM</button>
+  <button class="secondary" onclick="polishMOM()">✨ AI Latest Summary</button>
+  <button class="secondary" onclick="retroMOM()"> 🧠 AI Retro Summary </button>
+  <button class="secondary" onclick="closeMOM()">Close</button>
+</div>
+  </div>
+</div>
+
+<!-- ================= TASK MODAL ================= -->
+<div class="modal" id="taskModal">
+  <div class="modal-content">
+    <h3>New Task</h3>
+    <input id="tTitle" placeholder="Task title" style="min-width:500px"><br>
+    <input id="tTags" placeholder="Tags (comma separated)" style="min-width:500px"><br>
+        <select id="tMeeting"></select><input id="tDue" type="date"><br>
+    <div class="error" id="taskError"></div><br>
+    <button id="btnSaveTask">Save</button>
+    <button class="secondary" id="btnCancelTask">Cancel</button>
+  </div>
+</div>
+
+<!-- ================= TRANSCRIPT MODAL ================= -->
+<div class="modal" id="transcriptModal">
+  <div class="modal-content">
+    <h3 id="transcriptTitle"></h3>
+    <textarea id="transcriptText" style="width:100%;min-height:220px"></textarea>
+    <br><br>
+    <button id="btnGenPrompt">🤖 Generate AI Prompt</button>
+    <button id="btnSaveTranscript">Save Transcript</button>
+    <button class="secondary" id="btnCloseTranscript">Close</button>
+  </div>
+</div>
+
+<!-- ================= AI RESULT MODAL ================= -->
+<div class="modal" id="aiModal">
+  <div class="modal-content">
+    <h3>AI Result (JSON)</h3>
+    <textarea id="aiText" style="width:100%;min-height:220px;font-family:monospace"></textarea>
+    <br><br>
+    <button id="btnParseAI">Parse</button>
+    <button class="secondary" id="btnCloseAI">Cancel</button>
+    <div id="aiPreview"></div>
+  </div>
+</div>
+
+<input type="file" id="importFile" accept=".json" style="display:none">
+
+<!-- ================= HANDOFF  MODAL ================= -->
+<div class="modal" id="handoffModal">
+  <div class="modal-content scrollable">
+    <h3>🤝 Daily Handoff</h3>
+
+    <textarea id="handoffText"
+      style="width:100%;min-height:320px;font-family:monospace"></textarea>
+
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button onclick="copyHandoff()">📋 Copy</button>
+      <button class="secondary" onclick="closeHandoff()">Close</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================= ANNOUCEMENT  MODAL ================= -->
+<div class="modal hidden" id="announcementModal">
+  <div class="modal-content scrollable">
+    <h3 id="announcementModalTitle">New Announcement</h3>
+
+    <label>Title / Short Description *</label>
+    <input id="annTitle" style="min-width:500px">
+    <br>
+    <label>Content / Long Description *</label>
+    <textarea id="annContent" style="min-height:100px;min-width:500px"></textarea>
+    <br>
+    <label>Source Link (optional)</label>
+    <input id="annLink" placeholder="https://" style="min-width:500px">
+    <br>
+    <label>Tags (comma separated)</label>
+    <input id="annTags" placeholder="policy, release, security" style="min-width:500px">
+    <br>
+    <div class="modal-actions">
+      <button onclick="saveAnnouncement()">Save</button>
+      <button class="secondary" onclick="closeAnnouncementModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
+
+
+<!-- ================= SCRIPT PLACEHOLDER ================= -->
+<script>
+/* ===== APP LOCK ===== */
+const LOCK_KEY = "appLocked";
+const PWD_KEY  = "appPwdHash";
+
+const INACTIVITY_MINUTES = 10;
+let inactivityTimer;
+let meetingSearchText = "";
+let showArchivedMeetings = false;
+
+["click","keydown","mousemove","touchstart"].forEach(evt =>
+  document.addEventListener(evt, resetInactivityTimer, { passive:true })
+);
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) lockApp();
+});
+	
+function resetInactivityTimer(){
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(() => {
+    lockApp();
+    notify("App locked due to inactivity", "warn", 5000);
+  }, INACTIVITY_MINUTES * 60 * 1000);
+}
+// Simple SHA-256 hash
+async function hash(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2,"0"))
+    .join("");
+}
+async function handleSetPassword(){
+  lockApp();
+  notify("Enter new password to set it", "info", 4000);
+}
+	
+async function promptUnlock(){
+  const stored = localStorage.getItem(PWD_KEY);
+  if (!stored) return unlockApp();
+
+  const pwd = pwdInput.value;
+  if (!pwd) return;
+
+  const h = await hash(pwd);
+
+  if (h === stored){
+    pwdInput.value = "";
+    lockError.textContent = "";
+    unlockApp();
+    resetInactivityTimer();
+  } else {
+    lockError.textContent = "Incorrect password";
+    pwdInput.value = "";
+    pwdInput.focus();
+  }
+}
+	
+function handleRemovePassword(){
+	notify("Remove Password ", "success", 4000);
+  if (!confirm("Remove password?")) return;
+
+  localStorage.removeItem("appPwdHash");
+  localStorage.removeItem("appLocked");
+
+  unlockApp();
+  notify("Password removed", "success", 4000);
+}
+	
+async function setPassword(pwd){
+  const h = await hash(pwd);
+  localStorage.setItem(PWD_KEY, h);
+  unlockApp();
+}
+
+function lockApp(){
+  localStorage.setItem("appLocked", "1");
+  document.body.classList.add("locked");
+}
+
+function unlockApp(){
+  localStorage.removeItem("appLocked");
+  document.body.classList.remove("locked");
+  resetInactivityTimer();
+}
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  if (localStorage.getItem(PWD_KEY)) {
+    lockApp();
+    promptUnlock();
+  }
+});
+
+/*=====================*/
+	
+let activeOutcomeType = null;   // "task" | "task_candidate" | "question" | "risk"
+let activeOutcomeId = null;
+
+
+
+
+["click","mousemove","keydown"].forEach(evt => {
+  document.addEventListener(evt, () => {
+    lastActivity = Date.now();
+  });
+});
+
+setInterval(() => {
+  if (!hasPassword()) return;
+  if (Date.now() - lastActivity > LOCK_TIMEOUT_MINUTES * 60 * 1000) {
+    lockApp();
+  }
+}, 30000);
+const expandedAnnouncements = {};
+const ANNOUNCEMENT_PREVIEW_LENGTH = 300;
+const aiModal = document.getElementById("aiModal");
+const aiText = document.getElementById("aiText");
+const aiPreview = document.getElementById("aiPreview");
+const btnParseAI = document.getElementById("btnParseAI");
+const btnCloseAI = document.getElementById("btnCloseAI");
+/* =========================================================
+   PART 2 – CORE TASK MANAGEMENT (NO AI / TRANSCRIPTS YET)
+   ========================================================= */
+
+/* ================= DATA ================= */
+let db = JSON.parse(localStorage.getItem("taskDB")) || {
+  
+  tasks: [],
+  meetings: [{ name: "My Tasks" }]
+};
+
+if (!Array.isArray(db.announcements)) {
+  db.announcements = [];
+}
+
+// Optional but recommended: persist upgraded schema once
+localStorage.setItem("taskDB", JSON.stringify(db));
+db.tasks.forEach(t => {
+  t.updates = Array.isArray(t.updates) ? t.updates : [];
+});
+db.meetings = db.meetings.filter(m => m && m.name);
+
+const STATUSES = ["Not Started", "In-Progress", "Pending", "Closed"];
+const saveDB = () => localStorage.setItem("taskDB", JSON.stringify(db));
+
+/* ================= STATE ================= */
+let view = { type: "all", value: null };
+let lastUsedMeeting = null;
+let lastUsedTags = [];
+let filters = {
+  text: '',
+  meeting: '',
+  status: '',
+  tags: [],
+  hideClosed: true
+};
+let activeTaskId = null;
+let aiMode = null; // "review" | "polish"
+
+/* ================= HELPERS ================= */
+function isOverdue(t) {
+  if (!t.due || t.status === "Closed") return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return new Date(t.due) < today;
+}
+function overdueCount() {
+  return db.tasks.filter(isOverdue).length;
+}
+
+function openMeetingTimeline(meetingName){
+  view = { type: "timeline", value: meetingName };
+  render();
+}
+function computeTaskStatusCounts(){
+  const today = new Date().toISOString().slice(0,10);
+
+  const counts = {
+    "Not Started": 0,
+    "In-Progress": 0,
+    "Pending": 0,
+    "Closed": 0,
+    "Overdue": 0
+  };
+
+  db.tasks.forEach(t => {
+    if (counts[t.status] !== undefined) {
+      counts[t.status]++;
+    }
+
+    if (
+      t.due &&
+      t.status !== "Closed" &&
+      t.due < today
+    ) {
+      counts.Overdue++;
+    }
+  });
+
+  return counts;
+}
+function renderHeaderScorecard(){
+  const c = computeTaskStatusCounts();
+
+  return `
+    <div class="header-scorecard">
+      ${renderHeaderScore("Not Started", c["Not Started"], "ns")}
+      ${renderHeaderScore("In-Progress", c["In-Progress"], "ip")}
+      ${renderHeaderScore("Pending", c["Pending"], "pd")}
+      ${renderHeaderScore("Closed", c["Closed"], "cl")}
+      ${renderHeaderScore("Overdue", c["Overdue"], "over")}
+    </div>
+  `;
+}
+
+function renderHeaderScore(label, count, cls){
+  return `
+    <div class="header-score ${cls}"
+      title="${label}"
+      onclick="filters.status='${label}';render()">
+      <span class="count">${count}</span>
+      <span class="label">${label}</span>
+    </div>
+  `;
+}
+/* ================= SIDEBAR ================= */
+function toggleSidebar() {
+  main.classList.toggle("collapsed");
+  renderSidebar();
+}
+
+function renderSidebar() {
+  const collapsed = main.classList.contains("collapsed");
+  sidebar.innerHTML = `
+    <div class="sidebar-toggle" onclick="toggleSidebar()">
+      ${collapsed ? ">>" : "<<"}
+    </div>
+    
+    <div class="item ${view.type==="focus"?"active":""}"
+     onclick="setView('focus')">
+  🧭 <span class="label">Focus Today</span>
+     </div>
+	
+	<div class="item ${view.type==="weekly"?"active":""}"
+     onclick="setView('weekly')">
+  🧾 <span class="label">Weekly Summary</span>
+	</div>
+
+    <div class="item ${view.type==="all"?"active":""}"
+         onclick="setView('all')">
+      📋 <span class="label">All Tasks</span>
+      ${overdueCount() ? `<span class="badge">${overdueCount()}</span>` : ""}
+    </div>
+
+<div class="item ${view.type==="announcements"?"active":""}"
+     onclick="setView('announcements')">
+  📢 <span class="label">Announcements</span>
+</div>
+
+<div class="item"
+     onclick="generateDailyHandoff()">
+  🔄 <span class="label">Daily Handoff</span>
+</div>
+
+    <h3 class="label">Meetings</h3>
+    
+${db.meetings.map(m => {
+	// .filter(m => !m.archived)
+  const active = isMeetingActive(m.name);
+  return `
+    <div class="item
+      ${view.type==="meeting" && view.value===m.name ? "active":""}
+      ${!active ? "inactive" : ""}"
+      onclick="setView('meeting','${m.name}')">
+	  📅 <span class="health-dot ${getMeetingHealth(m.name)}"></span>
+ <span class="label">${m.name}</span>
+    </div>
+  `;
+}).join("")}
+
+    <h3 class="label">Admin</h3>
+    <div class="item ${view.type==="admin"?"active":""}"
+         onclick="setView('admin')">
+      ⚙ <span class="label">Manage Meetings</span>
+    </div>
+  `;
+}
+
+function setView(type, value=null) {
+  view = { type, value };
+  render();
+}
+
+function getMeetingHealth(meetingName){
+  const meeting = db.meetings.find(m => m.name === meetingName);
+  if (!meeting) return "healthy";
+
+  const hasOverdueTasks = db.tasks.some(t =>
+    t.origin === meetingName &&
+    t.status !== "Closed" &&
+    t.due &&
+    new Date(t.due) < new Date().setHours(0,0,0,0)
+  );
+
+  if (hasOverdueTasks) return "risk";
+
+  const hasUnreadQuestions =
+    (meeting.questions || []).some(q => !q.read);
+
+  if (hasUnreadQuestions) return "attention";
+
+  return "healthy";
+}
+
+/* ================= AI MODAL =========================== */
+function openAIPolishModal(){
+  aiMode = "polish";
+  aiText.value = "";
+  aiPreview.innerHTML = "";
+  aiModal.style.display = "flex";
+  aiText.focus();
+}
+
+function parseAIResult(){
+
+  let text = aiText.value.trim();
+  if (!text) {
+    notify("AI output is empty", "warn", 4000);
+    return;
+  }
+
+  if (aiMode === "polish") {
+    document.getElementById("momText").value = text;
+    closeAI();
+    notify("MOM polished successfully", "success", 4000);
+    return;
+  }
+
+  // existing review parsing continues here...
+}
+
+/*================== DAILY HANDOFF ================*/
+function openHandoffModal(text){
+  document.getElementById("handoffText").value = text;
+  document.getElementById("handoffModal").style.display = "flex";
+  document.getElementById("handoffText").focus();
+}
+
+function closeHandoff(){
+  document.getElementById("handoffModal").style.display = "none";
+}
+
+function copyHandoff(){
+  navigator.clipboard.writeText(
+    document.getElementById("handoffText").value
+  );
+  notify("Handoff copied to clipboard", "success", 4000);
+}
+
+function isTouchedTodayByCreationOnly(item, today){
+  return (
+    typeof item.ts === "string" &&
+    item.ts.startsWith(today)
+  );
+}
+
+function generateDailyHandoff(){
+
+  const today = new Date().toISOString().slice(0,10);
+
+  const closedTasks = [];
+  const openTasks   = [];
+  const decisions   = [];
+  const questions   = [];
+  const risks       = [];
+
+  // ---- TASKS (created OR updated today) ----
+  db.tasks.forEach(t => {
+
+    const touchedToday =
+      t.created === today ||
+      (t.updates || []).some(u => u.ts?.startsWith(today));
+
+    if (!touchedToday) return;
+
+    if (t.status === "Closed") {
+      closedTasks.push(t);
+    } else {
+      openTasks.push(t);
+    }
+  });
+
+  // ---- MEETING OUTCOMES (decisions / questions / risks MADE today) ----
+  db.meetings.forEach(m => {
+
+    (m.decisions || []).forEach(d => {
+      if (isTouchedTodayByCreationOnly(d, today)) {
+        decisions.push({ ...d, meeting: m.name });
+      }
+    });
+
+    (m.questions || []).forEach(q => {
+      if (isTouchedTodayByCreationOnly(q, today) && !q.converted) {
+        questions.push({ ...q, meeting: m.name });
+      }
+    });
+
+    (m.risks || []).forEach(r => {
+		if (isTouchedTodayByCreationOnly(r, today)) {
+        risks.push({ ...r, meeting: m.name });
+      }
+    });
+
+  });
+
+  // ---- NOTHING TO REPORT ----
+  if (
+    !closedTasks.length &&
+    !openTasks.length &&
+    !decisions.length &&
+    !questions.length &&
+    !risks.length
+  ) {
+    notify("No work recorded today", "info", 4000);
+    return;
+  }
+
+  const lines = [];
+
+  lines.push(`🔄 DAILY HANDOFF`);
+  lines.push(`📅 Date: ${today}`);
+  lines.push(`🕒 Generated at: ${new Date().toLocaleTimeString()}`);
+
+  // ---- WORK COMPLETED ----
+  if (closedTasks.length) {
+    lines.push(`
+✅ WORK COMPLETED TODAY
+${closedTasks.map((t,i)=>`${i+1}. ${cleanOutcomeText(t.title)}`).join("\n")}
+`);
+  }
+
+  // ---- WORK IN PROGRESS ----
+  if (openTasks.length) {
+    lines.push(`
+⏳ WORK IN PROGRESS
+${openTasks.map((t,i)=>`${i+1}. ${cleanOutcomeText(t.title)}`).join("\n")}
+`);
+  }
+
+  // ---- DECISIONS ----
+  if (decisions.length) {
+    lines.push(`
+📌 DECISIONS MADE TODAY
+${decisions.map((d,i)=>`${i+1}. ${cleanOutcomeText(d.text)}`).join("\n")}
+`);
+  }
+
+  // ---- BLOCKERS ----
+  if (questions.length) {
+    lines.push(`
+❓ BLOCKERS / OPEN QUESTIONS (RAISED TODAY)
+${questions.map((q,i)=>`${i+1}. ${cleanOutcomeText(q.text)}`).join("\n")}
+`);
+  }
+
+  // ---- RISKS ----
+  if (risks.length) {
+    lines.push(`
+⚠️ RISKS IDENTIFIED TODAY
+${risks.map((r,i)=>`${i+1}. ${cleanOutcomeText(r.text)}`).join("\n")}
+`);
+  }
+
+  // ---- NEXT FOCUS ----
+  lines.push(`
+🎯 NEXT FOCUS (TOMORROW)
+• Continue in-progress items
+• Resolve blockers
+• Monitor identified risks
+`);
+
+  openHandoffModal(lines.filter(Boolean).join("\n\n"));
+}
+
+function cleanOutcomeText(text){
+  if (!text) return "";
+
+  return text
+    // --- Remove emoji + labels (anywhere) ---
+    .replace(/✅\s*Decisions?:?\s*/gi, "")
+    .replace(/❓\s*Questions?:?\s*/gi, "")
+    .replace(/⚠️\s*Risks?:?\s*/gi, "")
+    .replace(/➡️\s*Follow-up:?\s*/gi, "")
+
+    .replace(/\bDecision:?\s*/gi, "")
+    .replace(/\bQuestion:?\s*/gi, "")
+    .replace(/\bRisk:?\s*/gi, "")
+    .replace(/\bFollow-up:?\s*/gi, "")
+
+    // --- Remove ALL attribution phrases ---
+    .replace(/\(Confirmed by[^)]+\)/gi, "")
+    .replace(/\(Raised by[^)]+\)/gi, "")
+    .replace(/\(Owner:[^)]+\)/gi, "")
+    .replace(/\(Implicit\)/gi, "")
+    .replace(/\(Meeting[^)]+\)/gi, "")
+
+    // --- Remove names introduced with "by" or "from" ---
+    .replace(/\bby\s+[A-Z][a-z]+(\s+[A-Z][a-z]+)*/g, "")
+    .replace(/\bfrom\s+[A-Z][a-z]+(\s+[A-Z][a-z]+)*/g, "")
+
+    // --- Remove trailing punctuation artifacts ---
+    .replace(/\s+[,.;]/g, "")
+    .replace(/\s{2,}/g, " ")
+
+    .trim();
+}
+
+/*================ ANNOUCEMENTS ================= */
+
+
+function openAnnouncements(){
+  hideAllViews();
+  announcementsView.classList.remove("hidden");
+  renderAnnouncements();
+}
+
+let announcementSearchValue = "";
+
+function renderAnnouncements(){
+  const q = (announcementSearchValue || "").toLowerCase();
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h2>Announcements</h2>
+      <div>
+<input id="announcementSearch"
+       placeholder="Search announcements..."
+       value="${announcementSearchValue}"
+       oninput="announcementSearchValue=this.value; renderAnnouncements()">
+        <button onclick="openAnnouncementModal()">＋ New</button>
+      </div>
+    </div>
+
+    <div class="announcement-list">
+      ${[...db.announcements]
+        .filter(a =>
+          a.title.toLowerCase().includes(q) ||
+          a.content.toLowerCase().includes(q) ||
+          a.tags.some(t => t.toLowerCase().includes(q))
+        )
+        .sort((a,b)=> new Date(b.created) - new Date(a.created))
+        .map(a => `
+          <div class="announcement-card">
+<h4>${highlightMatch(a.title, q)}</h4>
+
+            <div class="tags">
+${a.tags.map(t =>
+  `<span class="tag">#${highlightMatch(t, q)}</span>`
+).join("")}
+            </div>
+
+            <small>${new Date(a.created).toLocaleString()}</small>
+
+
+<p>
+${(() => {
+  const isExpanded = expandedAnnouncements[a.id];
+  const text = isExpanded
+    ? a.content
+    : a.content.slice(0, ANNOUNCEMENT_PREVIEW_LENGTH);
+
+  const needsToggle = a.content.length > ANNOUNCEMENT_PREVIEW_LENGTH;
+
+  return `
+    <p>
+      ${highlightMatch(text, q)}
+      ${!isExpanded && needsToggle ? "…" : ""}
+    </p>
+
+    ${needsToggle ? `
+      <button class="btn-ghost"
+        onclick="
+          expandedAnnouncements['${a.id}'] = !expandedAnnouncements['${a.id}'];
+          renderAnnouncements();
+        ">
+        ${isExpanded ? "Show less" : "Show more"}
+      </button>
+    ` : ""}
+  `;
+})()}
+</p>
+
+            ${a.link ? `<a href="${a.link}" target="_blank">Source</a>` : ""}
+
+            <div class="actions">
+              <button onclick="openAnnouncementModal('${a.id}')">Edit</button>
+              <button class="danger"
+                onclick="deleteAnnouncement('${a.id}')">Delete</button>
+            </div>
+          </div>
+        `).join("")}
+    </div>
+  `;
+  restoreFocus("announcementSearch");
+}
+
+let activeAnnouncementId = null;
+
+function openAnnouncementModal(id = null) {
+  activeAnnouncementId = id;
+  announcementModal.style.display = "flex";
+
+  if (id) {
+    const a = db.announcements.find(x => x.id === id);
+    if (!a) return;
+
+    annTitle.value = a.title;
+    annContent.value = a.content;
+    annLink.value = a.link || "";
+    annTags.value = (a.tags || []).join(", ");
+    announcementModalTitle.textContent = "Edit Announcement";
+  } else {
+    annTitle.value = "";
+    annContent.value = "";
+    annLink.value = "";
+    annTags.value = "";
+    announcementModalTitle.textContent = "New Announcement";
+  }
+
+  annTitle.focus();
+}
+
+function closeAnnouncementModal() {
+  announcementModal.style.display = "none";
+}
+
+function saveAnnouncement(){
+  if (!annTitle.value || !annContent.value){
+    alert("Title and content are required");
+    return;
+  }
+
+  const tags = annTags.value.split(",").map(t=>t.trim()).filter(Boolean);
+
+  if (activeAnnouncementId){
+    const a = db.announcements.find(x=>x.id===activeAnnouncementId);
+    Object.assign(a,{
+      title: annTitle.value,
+      content: annContent.value,
+      link: annLink.value,
+      tags,
+      updated: new Date().toISOString()
+    });
+  } else {
+    db.announcements.push({
+      id: crypto.randomUUID(),
+      title: annTitle.value,
+      content: annContent.value,
+      link: annLink.value,
+      tags,
+      created: new Date().toISOString(),
+      updated: new Date().toISOString()
+    });
+  }
+
+  saveDB();
+  closeAnnouncementModal();
+  renderAnnouncements();
+}
+
+function deleteAnnouncement(id){
+  if (!confirm("Delete this announcement?")) return;
+  db.announcements = db.announcements.filter(a=>a.id!==id);
+  saveDB();
+  renderAnnouncements();
+}
+
+function hideAllViews(){
+  document.querySelectorAll(".view")
+    .forEach(v => v.classList.add("hidden"));
+}
+
+function restoreFocus(id){
+  requestAnimationFrame(() => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len); // cursor at end
+    }
+  });
+}
+
+function highlightMatch(text, query){
+  if (!query) return text;
+
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
+
+  return text.replace(regex, `<span class="highlight">$1</span>`);
+}
+
+/*===============================================*/
+/* ================= TASK MODAL ================= */
+btnNewTask.onclick = () => openTaskModal();
+btnCancelTask.onclick = closeTaskModal;
+
+function openTaskModal() {
+  taskModal.style.display = "flex";
+  tTitle.value = "";
+  tTags.value = lastUsedTags.join(", ");
+  tDue.value = "";
+  taskError.textContent = "";
+tMeeting.innerHTML = db.meetings.map(m => {
+  const selected =
+    (view.type === "meeting" && view.value === m.name) ||
+    (lastUsedMeeting === m.name);
+
+  return `<option ${selected ? "selected" : ""}>${m.name}</option>`;
+	}).join("");
+}
+function closeTaskModal() {
+  taskModal.style.display = "none";
+}
+
+btnSaveTask.onclick = () => {
+  const title = tTitle.value.trim();
+  const tags = tTags.value.split(",").map(t=>t.trim()).filter(Boolean);
+  if (!title || !tMeeting.value || !tDue.value || !tags.length) {
+    taskError.textContent = "All fields are mandatory";
+    return;
+  }
+  db.tasks.push({
+    id: crypto.randomUUID(),
+    title,
+    tags,
+    origin: tMeeting.value,
+    due: tDue.value,
+    created: new Date().toISOString().slice(0,10),
+    status: "Not Started",
+    updates: []
+  });
+  lastUsedMeeting = tMeeting.value;
+  lastUsedTags = [...tags];
+  saveDB();
+  closeTaskModal();
+  render();
+};
+
+/* =================  RIGHT PANE MOM MODAL ====================*/
+function openMOMModal(text){
+  document.querySelector("#momModal h3").textContent =
+    "📄 Minutes of Meeting (Raw)";
+  document.getElementById("momText").value = text;
+  document.getElementById("momModal").style.display = "flex";
+}
+
+function closeMOM(){
+  document.getElementById("momModal").style.display = "none";
+}
+
+function copyMOM(){
+  navigator.clipboard.writeText(
+    document.getElementById("momText").value
+  );
+  notify("MOM copied to clipboard", "success", 4000);
+}
+/* ================= RIGHT PANE (TASK UPDATES) ================= */
+btnClosePane.onclick = closePane;
+
+function polishMOM(){
+
+  const raw = document.getElementById("momText").value;
+  if (!raw.trim()) {
+    notify("No MOM content to polish", "warn", 4000);
+    return;
+  }
+
+  const prompt = `
+You are a senior executive meeting editor.
+
+Rewrite the Minutes of Meeting below to be:
+- Clear
+- Concise
+- Professional
+- Leadership-friendly
+
+Rules:
+- Do NOT remove any point
+- Do NOT add new information
+- Preserve all decisions, questions, risks, and follow-ups
+- Keep bullet numbering
+- Improve wording and flow only
+
+Return plain text ONLY.
+
+MOM:
+<<<
+${raw}
+>>>
+`.trim();
+
+  navigator.clipboard.writeText(prompt);
+
+  //openAIPolishModal();
+  notify("AI polish prompt copied.", "info", 6000);
+}
+
+function formatWithDates(type, title, icon, items){
+  if (!items.length) return "";
+
+  const byDate = {};
+
+  items.forEach(i => {
+    const date = i.ts.slice(0,10); // YYYY-MM-DD
+    if (!byDate[date]) byDate[date] = [];
+    byDate[date].push(i.text);
+  });
+
+  let out = `${icon} ${title}\n`;
+
+  Object.entries(byDate)
+    .sort(([a],[b]) => b.localeCompare(a)) // newest first
+    .forEach(([date, texts]) => {
+      out += `\n📅 ${date}\n`;
+      texts.forEach((t, idx) => {
+        out += `${idx + 1}. ${t}\n`;
+      });
+    });
+
+  return out;
+}
+
+function generateMOM(mode = "all"){
+
+  const m = activeOutcomeMeeting;
+  if (!m) {
+    notify("No meeting selected", "warn", 4000);
+    return;
+  }
+
+  normalizeMeetingOutcomes(m);
+
+  // Collect all outcomes
+  let all = [
+    ...m.decisions.map(d => ({ ...d, _type: "decision" })),
+    ...m.questions.map(q => ({ ...q, _type: "question" })),
+    ...m.risks.map(r => ({ ...r, _type: "risk" })),
+    ...m.task_candidates.map(t => ({ ...t, _type: "task_candidate" }))
+  ];
+
+  if (!all.length) {
+    notify("No outcomes available for MOM", "warn", 4000);
+    return;
+  }
+
+  // Sort newest → oldest
+  all.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+
+  // 🔑 Filter for latest date if required
+  if (mode === "latest") {
+    const latestDate = new Date(all[0].ts).toISOString().slice(0,10);
+    all = all.filter(o => o.ts.slice(0,10) === latestDate);
+  }
+
+  const label = mode === "latest"
+    ? "MOST RECENT SESSION"
+    : "ALL SESSIONS";
+
+  const groupByType = (type, title, icon) => {
+    const items = all.filter(o => o._type === type);
+    if (!items.length) return "";
+    return `
+${icon} ${title}
+${items.map((i, idx) => `${idx+1}. ${cleanOutcomeText(i.text)}`).join("\n")}
+`;
+  };
+
+const sections = [
+  `📌 MEETING: ${m.name}`,
+  `🕒 Generated on: ${new Date().toLocaleString()}`,
+  `📄 Scope: ${label}`
+];
+
+if (mode === "latest") {
+  sections.push(
+    groupByType("decision", "DECISIONS", "✅"),
+    groupByType("question", "QUESTIONS / OPEN POINTS", "❓"),
+    groupByType("risk", "RISKS", "⚠️"),
+    renderTaskCandidatesWithUpdates(all)
+  );
+} else {
+  sections.push(
+    formatWithDates("decision", "DECISIONS", "✅",
+      all.filter(o => o._type === "decision")),
+    formatWithDates("question", "QUESTIONS / OPEN POINTS", "❓",
+      all.filter(o => o._type === "question")),
+    formatWithDates("risk", "RISKS", "⚠️",
+      all.filter(o => o._type === "risk")),
+    formatWithDates("task_candidate", "FOLLOW-UPS / TASK CANDIDATES", "➡️",
+      all.filter(o => o._type === "task_candidate"))
+  );
+}
+
+const momText = sections.filter(Boolean).join("\n\n");
+
+  openMOMModal(momText);
+}
+
+function renderTaskCandidatesWithUpdates(all){
+  const items = all.filter(o => o._type === "task_candidate");
+  if (!items.length) return "";
+
+  return `
+FOLLOW-UPS / ACTION THREADS
+
+${items.map((t, idx) => {
+  const updates = (t.updates || [])
+    .sort((a,b)=> new Date(a.ts) - new Date(b.ts))
+    .map(u => `   - ${u.text}`)
+    .join("\n");
+
+  return `
+${idx+1}. ${t.text}
+${updates ? updates : "   - No updates yet"}
+`;
+}).join("\n")}
+`;
+}
+
+function retroMOM(){
+
+  const raw = document.getElementById("momText").value.trim();
+  if (!raw) {
+    notify("No MOM content available", "warn", 4000);
+    return;
+  }
+
+  const prompt = `
+You are a senior delivery leader writing a professional meeting retrospective.
+
+This document is intended for leadership and stakeholders who need to understand:
+- WHAT was decided
+- WHY decisions or strategies changed
+- WHAT residual risks or actions remain
+
+You are given complete Minutes of Meeting across multiple dates.
+
+CRITICAL RETROSPECTIVE PRINCIPLES:
+
+• Decisions represent the final "WHAT"
+• Evolving Discussions represent the "WHY" — the reasoning and context behind changes
+• Open Questions represent "RESIDUAL RISK" — items that could still impact execution
+
+Each topic must appear in ONLY ONE section, chosen by its FINAL STATE.
+
+DO NOT repeat the same topic across sections.
+
+---
+
+### SECTION INSTRUCTIONS (MANDATORY)
+
+### 1. EXECUTIVE SUMMARY
+Write a concise, leadership-ready narrative that answers:
+- What phase the initiative is in
+- Overall risk posture (Low / Medium / High)
+- Key gating factors or deadlines
+- Immediate next focus post-meeting
+
+This section should read like a briefing, not a list.
+
+---
+
+### 2. KEY DECISIONS (FINAL STATE — WHAT)
+Include ONLY finalized, confirmed decisions.
+
+For each decision:
+- State the decision clearly
+- Include the latest confirmation date
+- Do NOT include discussion history or alternatives
+
+If a topic was debated earlier but is now finalized, it belongs ONLY here.
+
+---
+
+### 3. EVOLVING DISCUSSIONS (LOGIC FOR CHANGE — WHY)
+This section explains WHY certain strategies or decisions changed.
+
+For each item:
+- Describe the initial position (earlier date)
+- Explain what risk, dependency, or insight caused reevaluation
+- State the resulting shift in approach
+
+Use a short progression format:
+Initial → Insight → Result
+
+Do NOT repeat final decisions from Section 2.
+
+---
+
+### 4. OPEN QUESTIONS / RESIDUAL ACTIONS (REMAINING RISK)
+Include ONLY items that remain unresolved.
+
+For each item:
+- Clearly state the unknown or action required
+- Include ownership where implied
+- Frame as execution risk, not discussion
+
+Do NOT include items already finalized.
+
+---
+
+### 5. RISKS & MITIGATIONS
+Include risks that could still impact delivery.
+
+For each risk:
+- Describe the risk
+- State whether it is mitigated, partially mitigated, or open
+- Describe the current mitigation strategy
+
+---
+
+IMPORTANT RULES:
+- Do NOT invent information
+- Do NOT remove any topic
+- If a topic appeared across multiple dates, consolidate it based on final outcome
+- Maintain professional, executive-ready tone
+- Plain text only (no markdown beyond headings)
+
+MOM DATA:
+<<<
+${raw}
+>>>
+`.trim();
+
+  navigator.clipboard.writeText(prompt);
+
+  aiMode = "retro";
+  //openAI();
+  aiText.value = "";
+  aiPreview.innerHTML = "";
+  aiText.focus();
+
+  notify("AI Retro prompt copied. Paste response and click Parse.", "info", 6000);
+}
+
+function openTaskPane(taskId) {
+  activeOutcomeType = "task";
+  activeOutcomeId = taskId;
+  activeTaskId = taskId;
+  const t = db.tasks.find(x=>x.id===taskId);
+  paneTitle.textContent = t.title;
+  paneMeta.textContent = "Task Updates";
+  renderTaskUpdates();
+  /*rightPane.classList.add("open");*/
+  document.body.classList.add("right-pane-open");
+}
+
+function closePane() {
+ /* rightPane.classList.remove("open");*/
+  document.body.classList.remove("right-pane-open");
+  activeTaskId = null;
+}
+
+function renderTaskUpdates() {
+  const t = db.tasks.find(x=>x.id===activeTaskId);
+  paneBody.innerHTML = `
+  ${t.updates.map(u => `
+    <div class="note">
+      ${u.text}<br>
+      <small>${u.ts}</small>
+    </div>
+  `).join("")}
+
+  <textarea id="newUpdate" placeholder="Add update..."></textarea>
+  <div style="margin-top:8px">
+    <button onclick="addUpdate()">Add Update</button>
+  </div>
+`;
+}
+
+/*=====UPDATE=====*/
+
+function addUpdate(){
+  const txt = newUpdate.value.trim();
+  if (!txt) return;
+
+  const ts = new Date().toISOString();
+
+  // 🔒 HARD GUARANTEE: outcome update
+  if (activeOutcomeMeeting && activeOutcomeType && activeOutcomeId) {
+
+    let list;
+    if (activeOutcomeType === "task_candidate") {
+      list = activeOutcomeMeeting.task_candidates;
+    } else if (activeOutcomeType === "question") {
+      list = activeOutcomeMeeting.questions;
+    } else if (activeOutcomeType === "risk") {
+      list = activeOutcomeMeeting.risks;
+    }
+
+    if (list) {
+      const item = list.find(x => x.id === activeOutcomeId);
+      if (!item) return;
+
+      if (!Array.isArray(item.updates)) item.updates = [];
+      item.updates.push({ text: txt, ts });
+
+      saveDB();
+      renderMeetingOutcomes();
+      newUpdate.value = "";
+      console.log("✅ Outcome update saved", activeOutcomeType);
+      return;
+    }
+  }
+
+  // 🔄 FALLBACK: task update
+  if (activeTaskId) {
+    const t = db.tasks.find(x => x.id === activeTaskId);
+    if (!t) return;
+
+    if (!Array.isArray(t.updates)) t.updates = [];
+    t.updates.push({ text: txt, ts });
+
+    saveDB();
+    renderTaskUpdates();
+    newUpdate.value = "";
+    console.log("✅ Task update saved");
+  }
+}
+
+function renderWeeklySummary(){
+  const now = new Date();
+  const weekAgo = new Date();
+  weekAgo.setDate(now.getDate() - 7);
+
+  const isThisWeek = d => {
+    if (!d) return false;
+    return new Date(d) >= weekAgo;
+  };
+
+  // Decisions this week
+  const decisions = [];
+  db.meetings.forEach(m => {
+    (m.decisions || []).forEach(d => {
+      if (isThisWeek(d.ts)) {
+        decisions.push({
+          meeting: m.name,
+          text: d.text,
+          ts: d.ts
+        });
+      }
+    });
+  });
+
+  // Tasks completed this week
+  const completedTasks = db.tasks.filter(t =>
+    t.status === "Closed" && isThisWeek(t.updated || t.created)
+  );
+
+  // Open questions
+  const openQuestions = [];
+  db.meetings.forEach(m => {
+    (m.questions || []).forEach(q => {
+      if (!q.read) {
+        openQuestions.push({
+          meeting: m.name,
+          text: q.text
+        });
+      }
+    });
+  });
+
+  // Overdue tasks
+  const overdueTasks = db.tasks.filter(t =>
+    t.status !== "Closed" &&
+    t.due &&
+    new Date(t.due) < new Date().setHours(0,0,0,0)
+  );
+
+  // Render
+  content.innerHTML = `
+    <h2>🧾 Weekly Summary</h2>
+    <small>Last 7 days</small>
+
+    <h3>📌 Decisions Made</h3>
+    ${decisions.length
+      ? `<ul>${decisions.map(d =>
+          `<li><b>${d.meeting}:</b> ${d.text}</li>`
+        ).join("")}</ul>`
+      : `<em>No decisions recorded</em>`}
+
+    <h3>📋 Tasks Completed</h3>
+    ${completedTasks.length
+      ? `<ul>${completedTasks.map(t =>
+          `<li>${t.title} <small>(${t.origin})</small></li>`
+        ).join("")}</ul>`
+      : `<em>No tasks completed</em>`}
+
+    <h3>❓ Open Questions</h3>
+    ${openQuestions.length
+      ? `<ul>${openQuestions.map(q =>
+          `<li><b>${q.meeting}:</b> ${q.text}</li>`
+        ).join("")}</ul>`
+      : `<em>No open questions 🎉</em>`}
+
+    <h3>🔴 Risks / Overdue Tasks</h3>
+    ${overdueTasks.length
+      ? `<ul>${overdueTasks.map(t =>
+          `<li>${t.title} <small>(Due ${t.due})</small></li>`
+        ).join("")}</ul>`
+      : `<em>No overdue tasks</em>`}
+
+    <button onclick="copyWeeklySummary()">📋 Copy Summary</button>
+  `;
+}
+
+function copyWeeklySummary(){
+  const text = content.innerText;
+  navigator.clipboard.writeText(text);
+  notify("Weekly summary copied to clipboard", "success", 7000);
+}
+
+/* ================= ADMIN ================= */
+	function normalizeMeetings(){
+  db.meetings.forEach(m => {
+    if (typeof m.archived !== "boolean") {
+      m.archived = false;
+    }
+  });
+}
+	
+/*function renderAdmin(){
+	normalizeMeetings();
+  content.innerHTML = `
+    <div class="page-header">
+      <h2>Manage Meetings</h2>
+      <button onclick="addMeeting()">＋ Add Meeting</button>
+    </div>
+
+    <div class="meeting-list">
+      ${db.meetings.map(m => `
+        <div class="meeting-row">
+          <div class="meeting-name">
+            <span class="health-dot ${getMeetingHealth(m.name)}"></span>
+            ${m.name}
+            ${m.name === "My Tasks"
+              ? `<span class="badge-muted">Default</span>`
+              : ""}
+          </div>
+
+          <div class="meeting-actions">
+            <button class="btn-ghost"
+              onclick="analyzeMeeting('${m.name}')">🧠 Analyze</button>
+
+            <button class="btn-ghost"
+              onclick="openMeetingOutcomes('${m.name}')">📌 Outcomes</button>
+
+            <button class="btn-ghost"
+              onclick="openMeetingTimeline('${m.name}')">🧾 Timeline</button>
+
+            ${m.name !== "My Tasks" ? `
+              <button class="icon"
+                title="Rename"
+                onclick="renameMeeting('${m.name}')">✏</button>
+              <button class="icon danger"
+                title="Delete"
+                onclick="deleteMeeting('${m.name}')">🗑</button>
+            ` : ""}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}*/
+function renderAdmin(){
+console.log("renderAdmin v2 (with search + archive)");
+ normalizeMeetings();
+
+  // 🔍 Filter meetings
+  let meetings = [...db.meetings];
+
+  // Search filter
+  if (meetingSearchText) {
+    const q = meetingSearchText.toLowerCase();
+    meetings = meetings.filter(m =>
+      m.name.toLowerCase().includes(q)
+    );
+  }
+
+  // Archive filter
+  meetings = meetings.filter(m =>
+    showArchivedMeetings ? true : !m.archived
+  );
+
+  content.innerHTML = `
+    <div class="page-header">
+      <h2>Manage Meetings</h2>
+
+      <div style="display:flex;gap:8px;align-items:center">
+        <input
+          type="text"
+          placeholder="Search meetings…"
+          value="${meetingSearchText}"
+          oninput="meetingSearchText=this.value; renderAdmin()"
+        />
+
+        <label style="font-size:13px">
+          <input
+            type="checkbox"
+            ${showArchivedMeetings ? "checked" : ""}
+            onchange="showArchivedMeetings=this.checked; renderAdmin()"
+          />
+          Show archived
+        </label>
+
+        <button onclick="addMeeting()">＋ Add Meeting</button>
+      </div>
+    </div>
+
+    <div class="meeting-list">
+      ${meetings.map(m => `
+        <div class="meeting-row ${m.archived ? 'archived' : ''}">
+          <div class="meeting-name">
+            <span class="health-dot ${getMeetingHealth(m.name)}"></span>
+            ${m.name}
+            ${m.archived ? `<span class="badge-muted">Archived</span>` : ""}
+            ${m.name === "My Tasks"
+              ? `<span class="badge-muted">Default</span>`
+              : ""}
+          </div>
+
+          <div class="meeting-actions">
+            ${!m.archived ? `
+              <button class="btn-ghost"
+                onclick="analyzeMeeting('${m.name}')">🧠 Analyze</button>
+
+              <button class="btn-ghost"
+                onclick="openMeetingOutcomes('${m.name}')">📌 Outcomes</button>
+
+              <button class="btn-ghost"
+                onclick="openMeetingTimeline('${m.name}')">🧾 Timeline</button>
+            ` : ``}
+
+            ${m.name !== "My Tasks" ? `
+              ${m.archived ? `
+                <button class="btn-ghost"
+                  onclick="restoreMeeting('${m.name}')">♻ Restore</button>
+              ` : `
+                <button class="btn-ghost"
+                  onclick="archiveMeeting('${m.name}')">📦 Archive</button>
+
+                <button class="icon"
+                  title="Rename"
+                  onclick="renameMeeting('${m.name}')">✏</button>
+              `}
+            ` : ""}
+          </div>
+        </div>
+      `).join("")}
+
+      ${!meetings.length
+        ? `<div class="empty-state">No meetings found</div>`
+        : ""}
+    </div>
+  `;
+}
+
+function archiveMeeting(name){
+  const m = db.meetings.find(x => x.name === name);
+  if (!m) return;
+
+  if (!confirm(`Archive meeting "${name}"?`)) return;
+
+  m.archived = true;
+  saveDB();
+  notify("Meeting archived", "success", 4000);
+  renderAdmin();
+  renderSidebar();
+}
+
+function restoreMeeting(name){
+  const m = db.meetings.find(x => x.name === name);
+  if (!m) return;
+
+  m.archived = false;
+  saveDB();
+  notify("Meeting restored", "success", 4000);
+  renderAdmin();
+  renderSidebar();
+}
+	
+function addMeeting() {
+  const n = prompt("Meeting name");
+  if (!n || db.meetings.some(m=>m.name===n)) return;
+  db.meetings.push({ name: n });
+  saveDB(); render();
+  normalizeMeetingOutcomes(n);
+}
+function renameMeeting(oldName) {
+  const n = prompt("Rename meeting", oldName);
+  if (!n || n===oldName) return;
+  db.meetings.find(m=>m.name===oldName).name = n;
+  db.tasks.forEach(t => { if (t.origin===oldName) t.origin=n; });
+  saveDB(); render();
+}
+function deleteMeeting(name) {
+  if (db.tasks.some(t=>t.origin===name && t.status!=="Closed"))
+    notify("Close tasks before deleting meeting","warn",7000);
+  db.meetings = db.meetings.filter(m=>m.name!==name);
+  db.tasks.forEach(t=>{ if (t.origin===name) t.origin="My Tasks"; });
+  saveDB(); render();
+}
+
+/* ================= TASK LIST ================= */
+let taskSearchValue = "";
+function renderTasks() {
+  let tasks = [...db.tasks];
+  
+  // ✅ Hide Closed tasks if enabled
+if (filters.hideClosed) {
+  tasks = tasks.filter(t => t.status !== "Closed");
+}
+
+  if (view.type==="meeting") tasks = tasks.filter(t=>t.origin===view.value);
+  if (filters.text) {
+    const q = filters.text.toLowerCase();
+    tasks = tasks.filter(t =>
+      t.title.toLowerCase().includes(q) ||
+      t.tags.join(",").toLowerCase().includes(q)
+    );
+  }
+
+  tasks.sort((a,b)=>{
+    if (!a.due && !b.due) return 0;
+    if (!a.due) return 1;
+    if (!b.due) return -1;
+    return new Date(a.due)-new Date(b.due);
+  });
+
+  content.innerHTML = `
+    <h2>Tasks</h2>
+
+<div class="filters-row">
+  <input
+    id="taskSearch"
+    placeholder="Search…"
+    value="${filters.text || ''}"
+    oninput="filters.text=this.value;renderTasksPreserveSearch()"
+  >
+
+  <label class="hide-closed" >
+    <input type="checkbox"
+      ${filters.hideClosed ? "checked" : ""}
+      onchange="filters.hideClosed=this.checked;render()">
+    Hide Closed
+  </label>
+
+  <button class="secondary"
+    onclick="
+      filters = { text:'', meeting:'', status:'', tags:[], hideClosed:true };
+      render();
+    ">
+    Clear
+  </button>
+</div>
+
+    <table>
+      <tr>
+        <th>Task Description</th>
+        <th>Tags</th>
+        <th>Status</th>
+        <th>Due Date</th>
+        <th>Meeting</th>
+        <th></th>
+      </tr>
+      ${tasks.map(t => `
+        <tr data-task-id="${t.id}" class="${isOverdue(t)?'overdue':t.status.toLowerCase().replace(" ","-")}"
+            oncontextmenu="event.preventDefault();openTaskPane('${t.id}')">
+          <td contenteditable
+   				 onblur="updateTaskTitle('${t.id}', this.textContent)">${t.title}
+			</td>
+		  <td contenteditable
+   				 onblur="updateTaskTags('${t.id}', this.innerText)">${t.tags.join(", ")}
+		 </td>
+  		<td>
+ 		 <select onchange="updateTaskStatus('${t.id}', this.value)">
+    		${["Not Started","In-Progress","Pending","Closed"].map(s =>
+     		 `<option ${t.status===s?"selected":""}>${s}</option>`
+  			  ).join("")}
+  			</select>
+		</td>
+          <td>
+ 		 <input type="date"
+         value="${t.due || ""}"
+         onchange="updateTaskDue('${t.id}', this.value)">
+		 </td>
+          <td>
+ 		 ${t.origin}
+  		${t.decisionId
+  		  ? `<br><small>Decision-linked</small>`
+  		  : ""}
+			</td>
+			<td class="task-actions">
+  <div class="quick-actions">
+    <button class="icon" title="Close task"
+      onclick="quickCloseTask('${t.id}')">✔</button>
+
+    <button class="icon" title="Postpone +3 days"
+      onclick="quickPostponeTask('${t.id}')">🕒</button>
+
+    <button class="icon" title="Add update"
+      onclick="quickAddUpdate('${t.id}')">💬</button>
+
+    <button class="icon danger" title="Delete task"
+      onclick="deleteTask('${t.id}')">🗑</button>
+  </div>
+</td>
+        </tr>
+      `).join("")}
+    </table>
+  `;
+  restoreFocus("taskSearch");
+}
+
+function updateTaskTitle(id, value){
+  const t = db.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.title = value.trim();
+  saveDB();
+}
+
+function updateTaskTags(id, value){
+  const t = db.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.tags = value.split(",").map(v => v.trim()).filter(Boolean);
+  saveDB();
+}
+
+function updateTaskStatus(id, value){
+  const t = db.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.status = value;
+  saveDB();
+  render(); // important for row color / ordering
+}
+
+function updateTaskDue(id, value){
+  const t = db.tasks.find(x => x.id === id);
+  if (!t) return;
+  t.due = value;
+  saveDB();
+  render(); // ensures overdue highlighting updates
+}
+
+function deleteTask(id) {
+  if (!confirm("Delete this task?")) return;
+  db.tasks = db.tasks.filter(t=>t.id!==id);
+  saveDB(); render();
+}
+
+function quickCloseTask(taskId){
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  t.status = "Closed";
+  saveDB();
+  render();
+  requestAnimationFrame(() => {
+  const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+  if (row) row.classList.add("task-just-closed");
+});
+}
+
+function quickPostponeTask(taskId){
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!t) return;
+
+  const base = t.due ? new Date(t.due) : new Date();
+  base.setDate(base.getDate() + 3);
+  t.due = base.toISOString().slice(0,10);
+
+  saveDB();
+  render();
+}
+
+function quickAddUpdate(taskId){
+  openTaskPane(taskId);
+}
+/* ================= MAIN RENDER ================= */
+function getTaskScorecard(tasks){
+  const score = {
+    "Not Started": 0,
+    "In-Progress": 0,
+    "Pending": 0,
+    "Closed": 0,
+    "Overdue": 0
+  };
+
+  const today = new Date().toISOString().slice(0,10);
+
+  tasks.forEach(t => {
+    score[t.status]++;
+
+    if (
+      t.due &&
+      t.status !== "Closed" &&
+      t.due < today
+    ) {
+      score.Overdue++;
+    }
+  });
+
+  return score;
+}
+
+function renderTaskScorecard(tasks){
+  const s = getTaskScorecard(tasks);
+
+  return `
+  <div class="task-scorecard">
+    ${renderScoreItem("Not Started", s["Not Started"], "ns")}
+    ${renderScoreItem("In-Progress", s["In-Progress"], "ip")}
+    ${renderScoreItem("Pending", s["Pending"], "pd")}
+    ${renderScoreItem("Closed", s["Closed"], "cl")}
+    ${renderScoreItem("Overdue", s["Overdue"], "over")}
+  </div>
+  `;
+}
+
+function renderScoreItem(label, count, cls){
+  return `
+    <div class="score-item ${cls}"
+      onclick="filterByStatus('${label}')">
+      <div class="score-count">${count}</div>
+      <div class="score-label">${label}</div>
+    </div>
+  `;
+}
+
+function filterByStatus(status){
+  filters.status = status === "Overdue" ? "Overdue" : status;
+  render();
+}
+function render() {
+  renderSidebar();
+if (view.type === "focus") renderFocusToday();
+else if (view.type === "weekly") renderWeeklySummary();
+else if (view.type === "timeline") renderMeetingTimeline();
+else if (view.type === "admin") renderAdmin();
+else if (view.type === "announcements") renderAnnouncements();
+else renderTasks();
+}
+
+function renderTasksPreserveSearch(){
+  const input = document.getElementById("taskSearch");
+  const cursorPos = input ? input.selectionStart : null;
+
+  render();
+
+  // Restore focus + cursor
+  requestAnimationFrame(() => {
+    const newInput = document.getElementById("taskSearch");
+    if (newInput) {
+      newInput.focus();
+      if (cursorPos !== null) {
+        newInput.setSelectionRange(cursorPos, cursorPos);
+      }
+    }
+  });
+}
+function escapeHtml(str){
+  return str
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
+}
+
+function summarizePoints(list){
+  if (!list.length) return "";
+
+  const cleaned = list
+    .map(t => t.replace(/[.。]\s*$/, "").trim())
+    .filter(Boolean);
+
+  return cleaned
+    .map((text, idx) => `${idx + 1}. ${text}.`)
+    .join("<br>");
+}
+
+function derivePosture(summary){
+  const d = summary.decisions.length;
+  const q = summary.questions.length;
+
+  if (d && !q) return "✅ Alignment achieved; no open issues.";
+  if (!d && q) return "⚠️ Discussion ongoing; clarity pending.";
+  if (d && q) return "🟡 Partial alignment; follow-ups required.";
+
+  return "ℹ️ Informational discussion.";
+}
+
+function toggleTimelineDetails(){
+  timelineDetailsOpen = !timelineDetailsOpen;
+  renderMeetingTimeline();
+}
+
+function renderMeetingTimeline(){
+  let aiSummaryHtml = "";
+  
+  const meetingName = view.value;
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m) return;
+
+  if (m.aiTimelineSummary && m.aiTimelineSummary.text) {
+  aiSummaryHtml = `
+<div class="timeline-card ai-summary clickable"
+     onclick="toggleTimelineDetails()">
+      <div class="timeline-date">
+        🧠 AI Generated Summary
+        <span style="float:right;font-size:11px;opacity:.6">
+          ${new Date(m.aiTimelineSummary.ts).toLocaleDateString()}
+        </span>
+      </div>
+      <div class="timeline-summary">
+        ${escapeHtml(m.aiTimelineSummary.text)}
+      </div>
+    </div>
+  `;
+}
+
+  const byDate = {};
+
+  function bucket(ts){
+    const key = formatDateGroup(ts);
+    byDate[key] ||= { decisions: [], questions: [] };
+    return byDate[key];
+  }
+
+  // Collect everything
+  m.decisions.forEach(d => bucket(d.ts).decisions.push(d.text));
+  m.questions.forEach(q => bucket(q.ts).questions.push(q.text));
+
+  const dates = Object.keys(byDate);
+  
+
+  content.innerHTML = `
+    <h2>🧾 Timeline — ${m.name}</h2>
+           ${aiSummaryHtml}
+
+    ${dates.length === 0
+      ? `<em>No activity yet</em>`
+      : dates.map(date => {
+          const s = byDate[date];
+
+          const decisionSummary = summarizePoints(s.decisions);
+          const questionSummary = summarizePoints(s.questions);
+
+          return `
+            <div class="timeline-card">
+              <div class="timeline-date">${date}</div>
+
+			  ${timelineDetailsOpen ? `
+  				<div class="timeline-details">
+  
+              ${decisionSummary
+                ? `<div class="timeline-summary">
+                     <strong>Decisions:</strong><br>
+                     ${decisionSummary}
+                   </div>`
+                : ``}
+
+              ${questionSummary
+                ? `<div class="timeline-summary">
+                     <strong>Open Questions:</strong> <br>
+                     ${questionSummary}
+                   </div>`
+                : ``}
+                  </div>
+				` : ""}
+
+              <div class="timeline-signal">
+                ${derivePosture(s)}
+              </div>
+            </div>
+          `;
+        }).join("")}
+  `;
+}
+
+function renderFocusToday() {
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(today.getDate() + 1);
+
+  const overdueTasks = db.tasks.filter(t =>
+    t.status !== "Closed" &&
+    t.due &&
+    new Date(t.due) < today
+  );
+
+  const upcomingTasks = db.tasks.filter(t =>
+    t.status !== "Closed" &&
+    t.due &&
+    (new Date(t.due).getTime() === today.getTime() ||
+     new Date(t.due).getTime() === tomorrow.getTime())
+  );
+
+  const unreadQuestions = [];
+  db.meetings.forEach(m => {
+    (m.questions || []).forEach(q => {
+      if (!q.read) {
+        unreadQuestions.push({
+          meeting: m.name,
+          question: q
+        });
+      }
+    });
+  });
+
+  content.innerHTML = `
+    <h2>🧭 Focus Today</h2>
+
+    <h3>🔴 Overdue Tasks</h3>
+    ${overdueTasks.length
+      ? overdueTasks.map(t => `
+          <div class="note overdue"
+            onclick="openTaskPane('${t.id}')">
+            ${t.title}
+            <br><small>Due: ${t.due} · ${t.origin}</small>
+          </div>
+        `).join("")
+      : "<em>No overdue tasks 🎉</em>"}
+
+    <h3>🟠 Due Today / Tomorrow</h3>
+    ${upcomingTasks.length
+      ? upcomingTasks.map(t => `
+          <div class="note"
+            onclick="openTaskPane('${t.id}')">
+            ${t.title}
+            <br><small>Due: ${t.due} · ${t.origin}</small>
+          </div>
+        `).join("")
+      : "<em>No upcoming deadlines</em>"}
+
+    <h3>❓ Unread Questions</h3>
+    ${unreadQuestions.length
+      ? unreadQuestions.map(u => `
+          <div class="note unread"
+            onclick="openMeetingOutcomes('${u.meeting}')">
+            ${u.question.text}
+            <br><small>${u.meeting} · ${u.question.ts}</small>
+          </div>
+        `).join("")
+      : "<em>No open questions</em>"}
+  `;
+}
+
+function isMeetingActive(meetingName) {
+  const hasOpenTasks = db.tasks.some(t =>
+    t.origin === meetingName && t.status !== "Closed"
+  );
+
+  const meeting = db.meetings.find(m => m.name === meetingName);
+  const hasUnreadQuestions = meeting &&
+    (meeting.questions || []).some(q => !q.read);
+
+  return hasOpenTasks || hasUnreadQuestions;
+}
+
+/* ================= HEADER / SYSTEM ================= */
+btnTheme.onclick = () => {
+  document.body.dataset.theme =
+    document.body.dataset.theme==="dark" ? "" : "dark";
+};
+btnExport.onclick = exportData;
+btnImport.onclick = () => importFile.click();
+
+function getDateTimestamp(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_` +
+         `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+}
+
+function exportData() {
+  const blob = new Blob(
+    [JSON.stringify({ data: db }, null, 2)],
+    { type:"application/json" }
+  );
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `task-backup-${getDateTimestamp()}.json`;
+  a.click();
+}
+
+importFile.onchange = () => {
+  const r = new FileReader();
+  r.onload = e => {
+    db = JSON.parse(e.target.result).data;
+    saveDB(); render();
+  };
+  r.readAsText(importFile.files[0]);
+};
+
+/* ================= SHORTCUTS ================= */
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key==="n") {
+    e.preventDefault(); openTaskModal();
+  }
+  if (e.key==="Escape") {
+    closePane(); closeTaskModal();
+  }
+});
+
+/* ================= INIT ================= */
+render();
+/* =========================================================
+   PART 3 – MEETING INTELLIGENCE (TRANSCRIPTS + AI + OUTCOMES)
+   ========================================================= */
+
+/* ================= NORMALIZE MEETINGS ================= */
+db.meetings.forEach(m=>{
+  m.transcript = m.transcript || "";
+  m.decisions  = Array.isArray(m.decisions) ? m.decisions : [];
+  m.questions  = Array.isArray(m.questions) ? m.questions : [];
+
+  // Ensure read/unread flag exists
+  m.decisions.forEach(d => {
+    if (typeof d.read !== "boolean") d.read = false;
+    if (!Array.isArray(d.linkedTasks)) d.linkedTasks = [];
+  });
+m.questions.forEach(q => {
+  if (typeof q.read !== "boolean") q.read = false;
+  if (typeof q.converted !== "boolean") q.converted = false;
+});
+});
+
+/* ================= TRANSCRIPT STATE ================= */
+let activeTranscriptMeeting = null;
+let activeReviewMeeting = null;
+let aiReviewParsed = null;
+
+/* ================= ADMIN EXTENSION ================= */
+/* Override renderAdmin SAFELY by wrapping original */
+/*const _renderAdmin = renderAdmin;
+renderAdmin = function(){
+  _renderAdmin(); 
+/*  content.innerHTML = `
+    <div class="page-header">
+      <h2>Manage Meetings</h2>
+      <button onclick="addMeeting()">＋ Add Meeting</button>
+    </div>
+
+    <div class="meeting-list">
+      ${db.meetings.map(m => `
+        <div class="meeting-row">
+          <div class="meeting-name">
+            <span class="health-dot ${getMeetingHealth(m.name)}"></span>
+            ${m.name}
+            ${m.name === "My Tasks"
+              ? `<span class="badge-muted">Default</span>`
+              : ""}
+          </div>
+
+          <div class="meeting-actions">
+          
+            <button class="btn-ghost"
+              onclick="openTranscript('${m.name}')">🧠 Analyze</button>
+       
+            <button class="btn-ghost"
+              onclick="openMeetingOutcomes('${m.name}')">📌 Outcomes</button>
+
+            <button class="btn-ghost"
+              onclick="openMeetingTimeline('${m.name}')">🧾 Timeline</button>
+
+            ${m.name !== "My Tasks" ? `
+              <button class="icon"
+                title="Rename"
+                onclick="renameMeeting('${m.name}')">✏</button>
+              <button class="icon danger"
+                title="Delete"
+                onclick="deleteMeeting('${m.name}')">🗑</button>
+            ` : ""}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+};*/
+
+
+/* ================= TRANSCRIPT MODAL ================= */
+let timelineDetailsOpen = false;
+let aiParsed = null;
+
+btnCloseAI.onclick  = closeAI;
+btnCloseTranscript.onclick = closeTranscript;
+btnSaveTranscript.onclick  = saveTranscript;
+btnGenPrompt.onclick       = generateAIPrompt;
+btnParseAI.onclick         = parseAIReview;
+
+
+function hideGenPrompt(){
+  const btn = document.getElementById("btnGenPrompt");
+  if (!btn) return;
+  btn.style.display = "none";
+}
+
+function showGenPrompt(){
+  const btn = document.getElementById("btnGenPrompt");
+  if (!btn) return;
+  btn.style.display = "inline-block"; // or "block"
+}
+
+function openTranscript(name){
+  reviewMeeting(name);
+  activeTranscriptMeeting = db.meetings.find(m=>m.name===name);
+  transcriptTitle.textContent = `Transcript – ${name}`;
+  transcriptText.value = activeTranscriptMeeting.transcript || "";
+  transcriptModal.style.display = "flex";
+}
+
+function reviewMeeting(meetingName){
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m || !m.transcript) {
+       notify("Transcript is required to review a meeting", "error",7000);
+   /* alert("Transcript is required to review a meeting");*/
+     hideGenPrompt();
+    return;
+  }
+  activeReviewMeeting = m;
+}
+
+function generateAIPrompt(){
+   updateTranscript(); 
+   const m = activeTranscriptMeeting.transcript;
+   activeTranscriptMeeting.transcript = transcriptText.value.trim();
+  if(!activeTranscriptMeeting || !activeTranscriptMeeting.transcript)
+  {
+
+    notify("Transcript is empty", "error", 7000);
+    return;
+  }
+  
+  const prompt = `
+You are a senior meeting reviewer and decision coach.
+
+Review the meeting transcript below and provide:
+
+1. CLEAR DECISIONS that were made with who confirmed (or confirm if none)
+2. UNCLEAR or AMBIGUOUS points that need follow-up and who raised
+3. RISKS or DEPENDENCIES that may cause delays and who raised
+4. SUGGESTED FOLLOW-UP TASKS (short, actionable with owner)
+
+Return STRICT JSON ONLY:
+
+{
+  "decisions": ["..."],
+  "questions": ["..."],
+  "risks": ["..."],
+  "task_candidates": ["..."]
+}
+
+Additionally, provide ONE leadership-level summary paragraph that:
+- Covers all decisions and all open questions
+- Does not omit any point
+- Is suitable for executive recall
+
+Return it as:
+"timeline_summary": "..."
+
+Transcript:
+<<<
+${activeTranscriptMeeting.transcript}
+>>>
+`;
+  navigator.clipboard.writeText(prompt.trim());
+  OpenAI();
+  aiText.value = "";         // clear textarea
+  aiPreview.innerHTML = "";  // clear preview
+
+setTimeout(() => {
+  aiText.focus();          // focus paste area
+}, 50);
+
+
+notify("AI review prompt copied. Paste AI JSON and click Parse.", "success", 7000);
+
+  
+}
+
+function closeAI(){
+  aiModal.style.display = "none";
+  aiParsed = null;
+  activeReviewMeeting = null;
+  aiReviewParsed = null;
+}
+
+function OpenAI(){
+  aiModal.style.display = "flex";
+
+  // clear previous content
+  aiText.value = "";
+  aiPreview.innerHTML = "";
+
+  // update parse button label
+  btnParseAI.textContent = activeReviewMeeting
+    ? "Parse Review"
+    : "Parse Tasks";
+
+  btnParseAI.textContent = "Parse Meeting Review";
+  
+  // focus textarea for paste
+  setTimeout(() => aiText.focus(), 50);
+}
+
+
+function parseAIReview(){
+  let data;
+  try {
+    data = JSON.parse(aiText.value);
+  } catch {
+    notify("Invalid JSON !", "error", 7000);
+    return;	
+  }
+
+  const m = activeReviewMeeting;
+  if (!m) {
+    notify("No Meeting Attached, Retry after refresh", "warn", 7000);
+    return;
+  }
+
+  // 🔑 CRITICAL: ensure arrays exist for old meetings
+  normalizeMeetingOutcomes(m);
+
+   
+  const now = () => new Date().toISOString();
+
+  // ---------- Decisions ----------
+  (data.decisions || []).forEach(text => {
+    if (!text) return;
+    m.decisions.push({
+      id: crypto.randomUUID(),
+      text: "✅ Decisions: " +text.trim(),
+      ts: now(),
+      read: false,
+      linkedTasks: []
+    });
+  });
+  
+  // ---------- Questions ----------
+  (data.questions || []).forEach(text => {
+    if (!text) return;
+    m.questions.push({
+      id: crypto.randomUUID(),
+      text: "❓ Question: " + text.trim(),
+      ts: now(),
+      read: false,
+      converted: false
+    });
+  });
+
+    
+  // ---------- Risks ----------
+  (data.risks || []).forEach(text => {
+    if (!text) return;
+    m.risks.push({
+      id: crypto.randomUUID(),
+      text: "⚠️ Risk: " + text.trim(),
+      ts: now(),
+      read: false
+    });
+  });
+
+    
+  // ---------- Task candidates ----------
+  (data.task_candidates || []).forEach(text => {
+    if (!text) return;
+    m.task_candidates.push({
+      id: crypto.randomUUID(),
+      text: "➡️ Follow-up: " + text.trim(),
+      ts: now(),
+      read: false,
+      converted: false
+    });
+  });
+
+   
+  // ---------- Timeline Summary ----------
+  if (data.timeline_summary) {
+    m.aiTimelineSummary = {
+      ts: now(),
+      text: data.timeline_summary
+    };
+  }
+
+    
+  saveDB();
+  closeAI();
+  closeTranscript();
+  render();
+
+  deleteMeetingTranscript(m.name);
+
+  notify("Meeting transcript analysed", "success", 7000);
+}
+
+function normalizeTags(tags){
+  if(!Array.isArray(tags)) return [];
+  return [...new Set(tags.map(t=>t.toLowerCase().trim()).filter(Boolean))];
+}
+
+function closeTranscript(){
+  showGenPrompt();
+  transcriptModal.style.display = "none";
+  activeTranscriptMeeting = null;
+}
+
+function saveTranscript(){
+  activeTranscriptMeeting.transcript = transcriptText.value.trim();
+  saveDB();
+  closeTranscript();
+}
+
+function updateTranscript(){
+  activeTranscriptMeeting.transcript = transcriptText.value.trim();
+  saveDB();
+}
+
+function deleteMeetingTranscript(meetingName){
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m) return;
+
+  if (!m.transcript || !m.transcript.trim()) {
+    notify("No Transcript to delete", "warn", 7000);
+    return;
+  }
+
+  m.transcript = "";              // remove transcript
+  saveDB();
+  render();
+
+  notify("Transcript deleted successfully.", "success", 7000);
+
+}
+
+/* ==================  PHASE-2 AI =================*/
+
+function createTasksFromReview(){
+  const boxes = aiPreview.querySelectorAll("input[type=checkbox]");
+  let created = 0;
+
+  boxes.forEach(b=>{
+    if (b.checked){
+      db.tasks.push({
+        id: crypto.randomUUID(),
+        title: aiReviewParsed.suggested_tasks[b.dataset.i],
+        tags: ["review"],
+        origin: activeReviewMeeting.name,
+        due: "",
+        created: new Date().toISOString().slice(0,10),
+        status: "Not Started",
+        updates: []
+      });
+      created++;
+    }
+  });
+
+  saveDB();
+  render();
+  closeAI();
+  alert(`${created} follow-up task(s) created`);
+
+
+}
+
+/*function toggleOutcomeRead(type, meetingName, id){
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m) return;
+
+  const list = type === "decision" ? m.decisions : m.questions;
+  const item = list.find(x => x.id === id);
+  if (!item) return;
+
+  item.read = !item.read;
+  saveDB();
+  renderMeetingOutcomes();
+  requestAnimationFrame(() => {
+  const el = document.querySelector(
+    `.note[data-outcome-id="${id}"]`
+  );
+  if (el) el.classList.add("outcome-just-updated");
+});
+}*/
+function toggleOutcomeRead(type, meetingName, id){
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m) return;
+
+  // 🔹 Map outcome types to meeting data arrays
+  const outcomeMap = {
+    decision: m.decisions,
+    question: m.questions,
+    risk: m.risks,
+    task_candidate: m.task_candidates
+  };
+
+  const list = outcomeMap[type];
+  if (!list) return;
+
+  const item = list.find(x => x.id === id);
+  if (!item) return;
+
+  // 🔁 Toggle read state
+  item.read = !item.read;
+
+  saveDB();
+  renderMeetingOutcomes();
+
+  // 🎯 Visual feedback
+  requestAnimationFrame(() => {
+    const el = document.querySelector(
+      `.note[data-outcome-id="${id}"]`
+    );
+    if (el) el.classList.add("outcome-just-updated");
+  });
+}
+
+function promptLinkTask(meetingName, decisionId){
+  const openTasks = db.tasks.filter(t => t.status !== "Closed");
+  if (!openTasks.length) {
+    notify("No Open task available", "error", 7000);
+    return;
+  }
+
+  const list = openTasks
+    .map((t,i)=>`${i+1}. ${t.title}`)
+    .join("\n");
+
+  const choice = prompt(
+    "Select task number to link:\n\n" + list
+  );
+
+  const idx = parseInt(choice,10) - 1;
+  if (isNaN(idx) || !openTasks[idx]) return;
+
+  linkTaskToDecision(meetingName, decisionId, openTasks[idx].id);
+}
+
+/*function convertQuestionToTask(meetingName, questionId){
+  const m = db.meetings.find(x => x.name === meetingName);
+  if(!m) return;
+
+  const q = m.questions.find(x => x.id === questionId);
+  if(!q) return;
+
+  db.tasks.push({
+    id: crypto.randomUUID(),
+    title: q.text,
+    tags: ["question"],
+    origin: m.name,
+    due: "",
+    created: new Date().toISOString().slice(0,10),
+    status: "Not Started",
+    updates: []
+  });
+
+  // Mark question as read
+  q.read = true;
+  q.converted = true;
+  
+  saveDB();
+  render();
+  notify("Task created sucessfully","success",7000);
+  renderMeetingOutcomes();
+  requestAnimationFrame(() => {
+  const el = document.querySelector(
+    `.note[data-outcome-id="${questionId}"]`
+  );
+  if (el) el.classList.add("outcome-just-updated");
+});
+}*/
+
+function convertOutcomeToTask(meetingName, outcomeType, outcomeId){
+ // notify("In Task creation", "success", 6000);
+  
+
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m) return;
+  
+  const map = {
+    decision: m.decisions,
+    question: m.questions,
+    risk: m.risks,
+    task_candidate: m.task_candidates
+    // Optional owner extraction (safe)
+
+  };
+
+  const list = map[outcomeType];
+  if (!list) return;
+
+  const o = list.find(x => x.id === outcomeId);
+  if (!o || o.converted) return;
+  
+ // console.log("OUTCOME TEXT >>>", o.text); // ✅ correct debug
+  
+  const ownerTag = extractOwnerTagsFromText(o.text);
+
+  // 🧼 Clean title (remove emoji + label)
+  const cleanTitle = o.text
+    .replace(/^(✅|❓|⚠️|➡️)\s*(Decision:|Question:|Risk:|Follow-up:)?\s*/,"")
+    .trim();
+
+  // 🏷 Tag by type
+  const tagMap = {
+    decision: "decision",
+    question: "question",
+    risk: "risk",
+    task_candidate: "follow-up"
+  };
+
+  const taskId = crypto.randomUUID();
+
+  db.tasks.push({
+    id: taskId,
+    title: cleanTitle,
+    tags: [
+  tagMap[outcomeType],
+  ...(ownerTag ? [ownerTag] : [])
+],
+    origin: m.name,
+    due: datePlusDays(4),
+    created: new Date().toISOString().slice(0,10),
+    status: "Not Started",
+    updates: [],
+    source: {
+      type: outcomeType,
+      meeting: m.name,
+      outcomeId
+    }
+  });
+
+  // Mark outcome
+  o.read = true;
+  o.converted = true;
+
+  saveDB();
+  render();
+  notify("Task created successfully", "success", 6000);
+
+  renderMeetingOutcomes();
+
+  requestAnimationFrame(() => {
+    const el = document.querySelector(
+      `.note[data-outcome-id="${outcomeId}"]`
+    );
+    if (el) el.classList.add("outcome-just-updated");
+  });
+}
+
+function datePlusDays(days){
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0,10);
+}
+
+function extractOwnerTagsFromText(text){
+  if (!text) return null;
+
+  // 1️⃣ Look for (Name) anywhere
+  let match = text.match(/\(([^()]{2,50})\)/);
+  if (!match) return null;
+
+  let owner = match[1].trim();
+
+  // 2️⃣ Ignore non-owners
+  const blacklist = [
+    "confirmed by",
+    "raised by",
+    "meeting group",
+    "implicit"
+  ];
+
+  if (blacklist.some(b => owner.toLowerCase().includes(b))) {
+    return null;
+  }
+
+  return owner;
+}
+
+function linkTaskToDecision(meetingName, decisionId, taskId){
+  const m = db.meetings.find(x => x.name === meetingName);
+  if (!m) return;
+
+  const d = m.decisions.find(x => x.id === decisionId);
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!d || !t) return;
+
+  if (!d.linkedTasks.includes(taskId)) {
+    d.linkedTasks.push(taskId);
+    t.decisionId = decisionId;
+  }
+
+  saveDB();
+  render();
+  renderMeetingOutcomes();
+}
+
+function createTasksFromAI(){
+  const now = new Date().toLocaleString();
+  const boxes = aiPreview.querySelectorAll("input[type=checkbox]");
+  let created = 0;
+
+  boxes.forEach(b=>{
+    if(b.checked){
+      const t = aiParsed.tasks[b.dataset.i];
+      db.tasks.push({
+        id: crypto.randomUUID(),
+        title: t.title,
+        tags: normalizeTags(t.tags),
+        origin: activeTranscriptMeeting.name,
+        due: "",
+        created: new Date().toISOString().slice(0,10),
+        status: "Not Started",
+        updates: []
+      });
+      created++;
+    }
+  });
+
+  aiParsed.decisions.forEach(d=>{
+	activeTranscriptMeeting.decisions.push({
+  	id: crypto.randomUUID(),
+ 	 text: d,
+ 	 ts: now,
+ 	 read: false
+});
+  });
+
+  aiParsed.questions.forEach(q=>{
+	activeTranscriptMeeting.questions.push({
+  	id: crypto.randomUUID(),
+  	text: q,
+  	ts: now,
+  	read: false
+	});
+  });
+
+  saveDB();
+  closeAI();
+  render();
+  alert(`${created} task(s) created`);
+}
+
+/* ================= NOTIFICATION =======================*/
+
+function notify(message, type = "info", timeout = 4000){
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${type}`;
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  // Auto-scroll to latest
+  container.scrollTop = container.scrollHeight;
+
+  // Auto-remove
+  setTimeout(() => {
+    toast.remove();
+  }, timeout);
+}
+
+window.alert = function(message){
+  notify(message, "info");
+};
+
+/*========================================================*/
+
+/* ================= OUTCOMES IN RIGHT PANE ================= */
+window.toggleOutcomeRead = toggleOutcomeRead;
+//window.convertQuestionToTask = convertQuestionToTask;
+window.convertOutcomeToTask = convertOutcomeToTask;
+window.promptLinkTask = promptLinkTask;
+window.setOutcomeFilter = setOutcomeFilter;
+window.toggleOutcomeDate = toggleOutcomeDate;
+
+let activeOutcomeMeeting = null;
+let collapsedOutcomeDates = {};
+let outcomeTypeFilter = "all"; // all | decision | question
+
+function formatDateGroup(ts){
+  const d = new Date(ts);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const dStr = d.toDateString();
+  if (dStr === today.toDateString()) return "Today";
+  if (dStr === yesterday.toDateString()) return "Yesterday";
+
+  return d.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function groupByDate(items){
+  return items.reduce((acc, item) => {
+    const key = formatDateGroup(item.ts);
+    acc[key] ||= [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+}
+
+function openMeetingOutcomes(name){
+  // ✅ Only set the meeting context
+  activeOutcomeMeeting = db.meetings.find(m => m.name === name);
+  if (!activeOutcomeMeeting) return;
+
+  // ✅ CLEAR any previously selected outcome
+  activeOutcomeType = null;
+  activeOutcomeId = null;
+  
+  paneTitle.textContent = `Outcomes – ${name}`;
+  paneMeta.textContent  = "Decisions & Questions";
+  document.body.classList.add("right-pane-open");
+  renderMeetingOutcomes();
+ /* rightPane.classList.add("open");*/
+
+}
+
+function setOutcomeFilter(type){
+  outcomeTypeFilter = type;
+  renderMeetingOutcomes();
+}
+
+function toggleOutcomeDate(date){
+  collapsedOutcomeDates[date] = !collapsedOutcomeDates[date];
+  renderMeetingOutcomes();
+}
+
+
+function normalizeMeetingOutcomes(meeting){
+
+  meeting.decisions ||= [];
+  meeting.questions ||= [];
+  meeting.risks ||= [];
+  meeting.task_candidates ||= [];
+
+  meeting.task_candidates.forEach(tc => {
+    if (!tc.id) tc.id = crypto.randomUUID();
+    if (!Array.isArray(tc.updates)) tc.updates = [];
+    if (typeof tc.read !== "boolean") tc.read = false;
+    if (typeof tc.converted !== "boolean") tc.converted = false;
+  });
+
+
+  // 🔑 Ensure arrays exist (CRITICAL)
+  if (!Array.isArray(meeting.decisions)) meeting.decisions = [];
+  if (!Array.isArray(meeting.questions)) meeting.questions = [];
+  if (!Array.isArray(meeting.risks)) meeting.risks = [];
+  if (!Array.isArray(meeting.task_candidates)) meeting.task_candidates = [];
+
+  // ---------- Decisions ----------
+  meeting.decisions.forEach(d => {
+    if (!d.id) d.id = crypto.randomUUID();
+    if (!Array.isArray(d.linkedTasks)) d.linkedTasks = [];
+    if (typeof d.read !== "boolean") d.read = false;
+  });
+
+  // ---------- Questions ----------
+  meeting.questions.forEach(q => {
+    if (!q.id) q.id = crypto.randomUUID();
+    if (typeof q.read !== "boolean") q.read = false;
+    if (typeof q.converted !== "boolean") q.converted = false;
+  });
+
+  // ---------- Risks ----------
+  meeting.risks.forEach(r => {
+    if (!r.id) r.id = crypto.randomUUID();
+    if (typeof r.read !== "boolean") r.read = false;
+  });
+
+  // ---------- Task Candidates ----------
+  meeting.task_candidates.forEach(t => {
+    if (!t.id) t.id = crypto.randomUUID();
+    if (typeof t.read !== "boolean") t.read = false;
+    if (typeof t.converted !== "boolean") t.converted = false;
+  });
+}
+
+
+function renderMeetingOutcomes(){
+
+  const m = activeOutcomeMeeting;
+  if (!m) return;
+
+  normalizeMeetingOutcomes(m);
+  saveDB();
+
+  // 1️⃣ Combine ALL outcome types
+  let combined = [
+    ...m.decisions.map(d => ({ ...d, _type: "decision" })),
+    ...m.questions.map(q => ({ ...q, _type: "question" })),
+    ...(m.risks || []).map(r => ({ ...r, _type: "risk" })),
+    ...(m.task_candidates || []).map(t => ({ ...t, _type: "task_candidate" }))
+  ];
+
+  // 2️⃣ Filter by type
+  if (outcomeTypeFilter !== "all") {
+    combined = combined.filter(i => i._type === outcomeTypeFilter);
+  }
+
+  // 3️⃣ Sort newest → oldest
+  combined.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
+
+  // 4️⃣ Group by date
+  const groups = groupByDate(combined);
+
+  let html = `
+    <h3>${m.name}</h3>
+
+    <div class="outcome-filters">
+      <button class="${outcomeTypeFilter==='all'?'active':''}"
+        onclick="setOutcomeFilter('all')">All</button>
+      <button class="${outcomeTypeFilter==='decision'?'active':''}"
+        onclick="setOutcomeFilter('decision')">Decisions</button>
+      <button class="${outcomeTypeFilter==='question'?'active':''}"
+        onclick="setOutcomeFilter('question')">Questions</button>
+      <button class="${outcomeTypeFilter==='risk'?'active':''}"
+        onclick="setOutcomeFilter('risk')">Risks</button>
+      <button class="${outcomeTypeFilter==='task_candidate'?'active':''}"
+        onclick="setOutcomeFilter('task_candidate')">Tasks</button>
+    </div>
+  `;
+
+  // 5️⃣ Render groups
+  Object.entries(groups).forEach(([date, items]) => {
+
+    // Default collapsed
+    if (collapsedOutcomeDates[date] === undefined) {
+      collapsedOutcomeDates[date] = true;
+    }
+
+    html += `
+      <div class="date-group">
+        <div class="date-header"
+          onclick="toggleOutcomeDate('${date}')">
+          ${date} (${items.length})
+          <span class="chevron">
+            ${collapsedOutcomeDates[date] ? "▶" : "▼"}
+          </span>
+        </div>
+    `;
+
+    if (!collapsedOutcomeDates[date]) {
+
+      items.forEach(item => {
+
+        // 🧠 Shared note shell
+        html += `
+          <div class="note ${item.read ? 'read' : 'unread'}"
+               data-outcome-id="${item.id}"
+               onclick="openOutcomeItem('${m.name}','${item._type}','${item.id}')">
+
+            <label class="toggle" title="Mark read / unread">
+              <input type="checkbox"
+                ${item.read ? "checked" : ""}
+                onclick="event.stopPropagation();
+                         toggleOutcomeRead('${item._type}','${m.name}','${item.id}')">
+              <span class="toggle-slider"></span>
+            </label>
+        `;
+
+        // 🔹 Type badge
+     /*   html += `
+          <span class="tag-pill">${item._type.replace("_"," ")}</span>
+        `;*/
+
+        // 🔹 Action per type
+     /* if (item._type === "question") {
+          html += `
+            <button class="icon"
+              title="${item.converted ? 'Already converted' : 'Convert to task'}"
+              ${item.converted ? 'disabled' : ''}
+              onclick="event.stopPropagation();
+                ${item.converted ? "" :
+                  `convertQuestionToTask('${m.name}','${item.id}')`}">
+              ➕
+            </button>
+          `;
+        }*/
+        
+       if (["question","decision","risk","task_candidate"].includes(item._type)) {
+  html += `
+    <button class="icon"
+      title="${item.converted ? 'Already converted' : 'Convert to task'}"
+      ${item.converted ? 'disabled' : ''}
+      onclick="event.stopPropagation();
+        ${item.converted ? "" :
+          `convertOutcomeToTask('${m.name}','${item._type}','${item.id}')`}">
+      ➕
+    </button>
+  `;
+}
+
+        html += `
+            ${item.text}<br>
+            <small>${item.ts}</small>
+          </div>
+        `;
+      });
+    }
+
+    html += `</div>`;
+  });
+
+  paneBody.innerHTML = html;
+}
+
+function openOutcomeItem(meetingName, type, id){
+  activeOutcomeMeeting = db.meetings.find(m => m.name === meetingName);
+  activeOutcomeType = type;
+  activeOutcomeId = id;
+
+  document.body.classList.add("right-pane-open");
+  renderOutcomePane();
+
+  console.log("🔎 Outcome selected", type, id);
+}
+
+function renderOutcomePane(){
+  const m = activeOutcomeMeeting;
+  if (!m || !activeOutcomeType || !activeOutcomeId) return;
+
+  let item;
+  if (activeOutcomeType === "decision") {
+    item = m.decisions.find(x => x.id === activeOutcomeId);
+  } else if (activeOutcomeType === "question") {
+    item = m.questions.find(x => x.id === activeOutcomeId);
+  } else if (activeOutcomeType === "risk") {
+    item = m.risks.find(x => x.id === activeOutcomeId);
+  } else if (activeOutcomeType === "task_candidate") {
+    item = m.task_candidates.find(x => x.id === activeOutcomeId);
+  }
+
+  if (!item) return;
+
+  paneTitle.textContent = item.text;
+  paneMeta.textContent = `${activeOutcomeType.toUpperCase()} • ${new Date(item.ts).toLocaleString()}`;
+
+  renderOutcomeUpdates(item);
+}
+
+if (hasPassword() && isLocked()) {
+  lockApp();
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const hasPassword = !!localStorage.getItem("appPwdHash");
+
+  if (hasPassword) {
+    lockApp();          // 🔒 force lock
+    await promptUnlock(); // 🔑 ask password
+  } else {
+    unlockApp();        // no password → free access
+  }
+});
+</script>
+<!-- ===== APP LOCK SCREEN ===== -->
+<div id="lockScreen" style="
+  position:fixed;
+  inset:0;
+  background:#0f1115;
+  color:#fff;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+">
+  <div style="background:#171a21;padding:24px;border-radius:12px;width:320px">
+    <h3>🔒 Locked</h3>
+    <p style="color:#9aa1ac">Enter password to continue</p>
+    <input id="lockPassword" type="password" style="width:100%;padding:8px">
+    <button style="margin-top:12px;width:100%" onclick="unlockApp()">Unlock</button>
+    <p id="lockError" style="color:#dc2626;font-size:12px"></p>
+  </div>
+</div>
+<!-- ===== Notification Stack ===== -->
+<div id="toastContainer"></div>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
+</script>
+<div id="lockScreen">
+  <div class="lock-box">
+    🔒 App Locked
+    <button onclick="promptUnlock()">Unlock</button>
+  </div>
+</div>
+</body>
+</html>
