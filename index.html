@@ -2298,12 +2298,13 @@ console.log("renderAdmin v2 (with search + archive)");
       <h2>Manage Meetings</h2>
 
       <div style="display:flex;gap:8px;align-items:center">
-        <input
-          type="text"
-          placeholder="Search meetings…"
-          value="${meetingSearchText}"
-          oninput="meetingSearchText=this.value; renderAdmin()"
-        />
+      <input
+  id="meetingSearchInput"
+  type="text"
+  placeholder="Search meetings…"
+  value="${meetingSearchText}"
+  oninput="onMeetingSearchInput(this.value)"
+/>
 
         <label style="font-size:13px">
           <input
@@ -2365,7 +2366,19 @@ console.log("renderAdmin v2 (with search + archive)");
     </div>
   `;
 }
+function onMeetingSearchInput(value){
+  meetingSearchText = value;
+  renderAdmin();
 
+  // 🔁 Restore focus after DOM update
+  requestAnimationFrame(() => {
+    const el = document.getElementById("meetingSearchInput");
+    if (el) {
+      el.focus();
+      el.selectionStart = el.selectionEnd = el.value.length;
+    }
+  });
+}
 function archiveMeeting(name){
   const m = db.meetings.find(x => x.name === name);
   if (!m) return;
