@@ -3028,6 +3028,7 @@ function showGenPrompt(){
 }
 
 function openTranscript(name){
+notify("Open Transcript", "success",7000);
   reviewMeeting(name);
   activeTranscriptMeeting = db.meetings.find(m=>m.name===name);
   transcriptTitle.textContent = `Transcript – ${name}`;
