@@ -853,7 +853,187 @@ body.locked #lockScreen {
   border-radius: 12px;
   text-align:center;
 }
-	
+.oneonone-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:16px;
+}
+
+.oneonone-card{
+  background:var(--card);
+  padding:16px;
+  border-radius:12px;
+  box-shadow:0 4px 12px rgba(0,0,0,0.05);
+  cursor:pointer;
+  transition:0.2s;
+}
+
+.oneonone-card:hover{
+  transform:translateY(-3px);
+}
+
+.oneonone-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:20px;
+}
+
+.oneonone-session{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  margin-bottom: 18px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+  transition: 0.2s ease;
+}
+
+.oneonone-session:hover{
+  box-shadow: 0 10px 28px rgba(0,0,0,0.08);
+}
+.action-closed{
+  text-decoration:line-through;
+  opacity:0.6;
+}
+.session-section{
+  margin-top:16px;
+  padding:12px 14px;
+  background:rgba(0,0,0,0.02);
+  border-radius:10px;
+  border:1px solid var(--border);
+}
+.session-section button.secondary{
+  margin-top:8px;
+  font-size:12px;
+  padding:4px 10px;
+  border-radius:8px;
+}
+.session-section h4{
+  margin:0 0 8px 0;
+  font-size:13px;
+  font-weight:600;
+  color:var(--muted);
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+.session-section{
+  margin-top:16px;
+}
+
+.session-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding-bottom:8px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:14px;
+  cursor:pointer;
+}
+
+.session-header strong{
+  font-size:15px;
+}
+
+.session-meta{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.editable-row,
+.action-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:6px 8px;
+  border-radius:8px;
+  transition:0.15s;
+}
+
+.editable-row:hover,
+.action-row:hover{
+  background:rgba(0,0,0,0.04);
+}
+
+.editable-row span,
+.action-row span{
+  flex:1;
+  outline:none;
+}
+
+.session-body{
+  margin-top:10px;
+}
+.signal-bar{
+  display:flex;
+  gap:14px;
+  font-size:13px;
+  margin-top:10px;
+  flex-wrap:wrap;
+}
+
+.signal-bar div{
+  padding:4px 8px;
+  border-radius:8px;
+  background:rgba(0,0,0,0.04);
+  cursor:pointer;
+  transition:0.15s ease;
+}
+
+.signal-bar div:hover{
+  background:rgba(0,0,0,0.08);
+}
+.action-row.fresh {
+  border-left: 4px solid #22c55e;
+}
+
+.action-row.aging {
+  border-left: 4px solid #f59e0b;
+}
+
+.action-row.stale {
+  border-left: 4px solid #ef4444;
+}
+
+.aging-badge{
+  font-size:11px;
+  padding:2px 6px;
+  border-radius:6px;
+  background:rgba(0,0,0,0.05);
+  color:var(--muted);
+}
+.action-row {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:6px 8px;
+  border-radius:8px;
+  margin-bottom:6px;
+}
+
+.action-row.fresh {
+  border-left:4px solid #22c55e;
+}
+
+.action-row.aging {
+  border-left:4px solid #f59e0b;
+}
+
+.action-row.stale {
+  border-left:4px solid #ef4444;
+}
+
+.aging-badge{
+  font-size:11px;
+  padding:2px 6px;
+  border-radius:6px;
+  background:rgba(0,0,0,0.05);
+  color:var(--muted);
+}
+
+.hidden{
+  display:none;
+}
 </style>
 </head>
 
@@ -862,7 +1042,7 @@ body.locked #lockScreen {
 <!-- ================= HEADER ================= -->
 <header>
   <strong>🧠 Task Intelligence</strong>
- <small style="margin-left:8px;color:var(--muted)">v2.2</small>
+ <small style="margin-left:8px;color:var(--muted)">v2.5</small>
     <div id="headerScorecard"></div>
   </div>
   <div>
@@ -1128,7 +1308,11 @@ let db = JSON.parse(localStorage.getItem("taskDB")) || {
   
   tasks: [],
   meetings: [{ name: "My Tasks" }]
+  /*oneOnOnes: []*/
 };
+
+if (!db.oneOnOnes) db.oneOnOnes = [];
+
 
 if (!Array.isArray(db.announcements)) {
   db.announcements = [];
@@ -1252,9 +1436,15 @@ function renderSidebar() {
       ${overdueCount() ? `<span class="badge">${overdueCount()}</span>` : ""}
     </div>
 
+
 <div class="item ${view.type==="announcements"?"active":""}"
      onclick="setView('announcements')">
   📢 <span class="label">Announcements</span>
+</div>
+
+<div class="item ${view.type==="oneonone"?"active":""}"
+     onclick="setView('oneonone')">
+  👥 <span class="label">1-1 Workspace</span>
 </div>
 
 <div class="item"
@@ -2661,8 +2851,412 @@ else if (view.type === "weekly") renderWeeklySummary();
 else if (view.type === "timeline") renderMeetingTimeline();
 else if (view.type === "admin") renderAdmin();
 else if (view.type === "announcements") renderAnnouncements();
+else if (view.type === "oneonone") renderOneOnOnes();
+else if (view.type === "oneonone-detail") openOneOnOne(view.value);
 else renderTasks();
 }
+
+/* ====================1-1 Module ==================
+======================================================*/
+function renderOneOnOnes(){
+normalizeOneOnOnes();
+  content.innerHTML = `
+    <div class="page-header">
+      <h2>1-1 Performance Workspace</h2>
+      <button onclick="addReportee()">＋ Add Reportee</button>
+    </div>
+
+    ${db.oneOnOnes.length === 0
+      ? `<div class="empty-state">No reportees added yet</div>`
+      : `
+        <div class="oneonone-grid">
+          ${db.oneOnOnes.map(o => `
+            <div class="oneonone-card"
+              onclick="setView('oneonone-detail','${o.id}')">
+              <strong>${o.person}</strong>
+              <div class="muted">${o.role || "Role not set"}</div>
+              <div class="muted">
+                Sessions: ${o.sessions.length}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      `}
+  `;
+}
+function addReportee(){
+  const name = prompt("Reportee name");
+  if (!name) return;
+
+  const role = prompt("Role / Title") || "";
+
+  db.oneOnOnes.push({
+    id: crypto.randomUUID(),
+    person: name,
+    role,
+    cadence: "Weekly",
+    createdAt: new Date().toISOString(),
+    sessions: []
+  });
+
+  saveDB();
+  render();
+}
+function openOneOnOne(id){
+  const o = db.oneOnOnes.find(x => x.id === id);
+  if (!o) return;
+
+  view = { type: "oneonone-detail", value: id };
+
+  content.innerHTML = `
+    <div class="oneonone-header">
+      <div>
+        <h2>${o.person}</h2>
+        <div class="muted">
+          ${o.role || "Role not set"} | Cadence: ${o.cadence}
+        </div>
+      </div>
+
+      <div>
+        <button onclick="createOneOnOneSession('${o.id}')">
+          ＋ New Session
+        </button>
+        <button class="secondary"
+          onclick="setView('oneonone')">
+          ← Back
+        </button>
+      </div>
+    </div>
+
+    <div id="oneonone-sessions">
+      ${o.sessions.length === 0
+        ? `<div class="empty-state">No sessions yet</div>`
+        : o.sessions.map(s => `
+  <div class="oneonone-session">
+
+    <div class="session-header"
+      onclick="toggleSession('${o.id}','${s.id}')">
+      <strong>${s.date}</strong>
+<div class="session-meta">
+  📌 ${s.agenda.length} |
+  📝 ${s.notes.length} |
+  ✅ ${s.actions.length}
+</div>
+<div class="session-signals">
+  ${renderSignals(o.id, s.id, s.signals)}
+</div>
+    </div>
+
+    <div id="session-${s.id}" class="session-body">
+
+      <!-- AGENDA -->
+      <div class="session-section">
+        <h4>Agenda</h4>
+
+        ${s.agenda.length === 0
+          ? `<div class="muted">No agenda items</div>`
+          : s.agenda.map(a => `
+              <div class="editable-row">
+                <span contenteditable
+                  onblur="updateAgenda('${o.id}','${s.id}','${a.id}',this.textContent)">
+                  ${a.text}
+                </span>
+                <button class="icon danger"
+                  onclick="deleteAgenda('${o.id}','${s.id}','${a.id}')">✖</button>
+              </div>
+            `).join("")}
+
+        <button class="secondary"
+          onclick="addAgenda('${o.id}','${s.id}')">
+          ＋ Add Agenda
+        </button>
+      </div>
+
+      <!-- NOTES -->
+      <div class="session-section">
+        <h4>Notes</h4>
+
+        ${s.notes.length === 0
+          ? `<div class="muted">No notes yet</div>`
+          : s.notes.map(n => `
+              <div class="editable-row">
+                <span contenteditable
+                  onblur="updateNote('${o.id}','${s.id}','${n.id}',this.textContent)">
+                  ${n.text}
+                </span>
+                <button class="icon danger"
+                  onclick="deleteNote('${o.id}','${s.id}','${n.id}')">✖</button>
+              </div>
+            `).join("")}
+
+        <button class="secondary"
+          onclick="addNote('${o.id}','${s.id}')">
+          ＋ Add Note
+        </button>
+      </div>
+
+      <!-- ACTIONS -->
+      <div class="session-section">
+        <h4>Actions</h4>
+
+        ${s.actions.length === 0
+          ? `<div class="muted">No actions</div>`
+          : s.actions.map(a => `
+const aging = getActionAging(a.created);
+
+<div class="action-row ${aging.color}">
+                <input type="checkbox"
+                  ${a.status === "Closed" ? "checked" : ""}
+                  onchange="toggleAction('${o.id}','${s.id}','${a.id}')">
+
+                <span class="${a.status === "Closed" ? "action-closed" : ""}"
+  contenteditable
+  onblur="updateAction('${o.id}','${s.id}','${a.id}',this.textContent)">
+  ${a.text}
+</span>
+
+                <button class="icon danger"
+                  onclick="deleteAction('${o.id}','${s.id}','${a.id}')">✖</button>
+              </div>
+            `).join("")}
+
+        <button class="secondary"
+          onclick="addAction('${o.id}','${s.id}')">
+          ＋ Add Action
+        </button>
+      </div>
+
+    </div>
+  </div>
+          `).join("")}
+    </div>
+  `;
+}
+function normalizeOneOnOnes(){
+  db.oneOnOnes.forEach(o=>{
+    o.sessions.forEach(s=>{
+
+      if (!s.signals){
+        s.signals = {
+          execution: "ontrack",
+          ownership: "strong",
+          communication: "clear",
+          morale: "neutral",
+          riskLevel: "low"
+        };
+      }
+
+    });
+  });
+}
+function createOneOnOneSession(oneId){
+  const o = db.oneOnOnes.find(x => x.id === oneId);
+  if (!o) return;
+
+  o.sessions.unshift({
+    id: crypto.randomUUID(),
+    date: new Date().toISOString().slice(0,10),
+    agenda: [],
+    notes: [],
+    actions: [],
+
+    signals: {
+      execution: "ontrack",
+      ownership: "strong",
+      communication: "clear",
+      morale: "neutral",
+      riskLevel: "low"
+    },
+
+    aiSummary: null
+  });
+
+  saveDB();
+  openOneOnOne(oneId);
+}
+function toggleSession(oneId, sessionId){
+  const el = document.getElementById("session-" + sessionId);
+  if (el) el.classList.toggle("hidden");
+}
+function addAgenda(oneId, sessionId){
+  const o = db.oneOnOnes.find(x => x.id === oneId);
+  const s = o.sessions.find(x => x.id === sessionId);
+
+  s.agenda.push({
+    id: crypto.randomUUID(),
+    text: "New agenda item"
+  });
+
+  saveDB();
+  openOneOnOne(oneId);
+}
+function updateAgenda(oneId, sessionId, itemId, text){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  const item = s.agenda.find(x=>x.id===itemId);
+  item.text = text;
+  saveDB();
+}
+function deleteAgenda(oneId, sessionId, itemId){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  s.agenda = s.agenda.filter(x=>x.id!==itemId);
+  saveDB();
+  openOneOnOne(oneId);
+}
+function addNote(oneId, sessionId){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  s.notes.push({
+    id: crypto.randomUUID(),
+    text: "New note"
+  });
+
+  saveDB();
+  openOneOnOne(oneId);
+}
+function updateNote(oneId, sessionId, noteId, text){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  const n = s.notes.find(x=>x.id===noteId);
+  n.text = text;
+  saveDB();
+}
+function deleteNote(oneId, sessionId, noteId){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  s.notes = s.notes.filter(x=>x.id!==noteId);
+  saveDB();
+  openOneOnOne(oneId);
+}
+function addAction(oneId, sessionId){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  s.actions.push({
+    id: crypto.randomUUID(),
+    text: "New action",
+    status: "Open",
+    createdAt: new Date().toISOString()
+  });
+
+  saveDB();
+  openOneOnOne(oneId);
+}
+function updateAction(oneId, sessionId, actionId, text){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  const a = s.actions.find(x=>x.id===actionId);
+  a.text = text;
+  saveDB();
+}
+function toggleAction(oneId, sessionId, actionId){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  const a = s.actions.find(x=>x.id===actionId);
+  a.status = a.status === "Closed" ? "Open" : "Closed";
+  saveDB();
+}
+function deleteAction(oneId, sessionId, actionId){
+  const s = db.oneOnOnes.find(x=>x.id===oneId)
+    .sessions.find(x=>x.id===sessionId);
+
+  s.actions = s.actions.filter(x=>x.id!==actionId);
+  saveDB();
+  openOneOnOne(oneId);
+}
+function renderSignals(reporteeId, sessionId, signals){
+
+  const moodMap = {
+    positive: "🙂",
+    neutral: "😐",
+    low: "🙁"
+  };
+
+  const deliveryMap = {
+    ontrack: "🟢",
+    watch: "🟡",
+    risk: "🔴"
+  };
+
+  const growthMap = {
+    improving: "📈",
+    stable: "➡",
+    declining: "📉"
+  };
+
+  return `
+    <div class="signal-bar">
+
+      <div onclick="cycleSignal('${reporteeId}','${sessionId}','mood')">
+        ${moodMap[signals.mood]} Mood
+      </div>
+
+      <div onclick="cycleSignal('${reporteeId}','${sessionId}','delivery')">
+        ${deliveryMap[signals.delivery]} Delivery
+      </div>
+
+      <div onclick="toggleRisk('${reporteeId}','${sessionId}')">
+        ${signals.risk ? "⚠️ Risk" : "✓ No Risk"}
+      </div>
+
+      <div onclick="cycleSignal('${reporteeId}','${sessionId}','growth')">
+        ${growthMap[signals.growth]} Growth
+      </div>
+
+    </div>
+  `;
+}
+function cycleSignal(rId, sId, type){
+  const r = db.oneOnOnes.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  const cycles = {
+    mood: ["positive","neutral","low"],
+    delivery: ["ontrack","watch","risk"],
+    growth: ["improving","stable","declining"]
+  };
+
+  const current = s.signals[type];
+  const list = cycles[type];
+  const next = list[(list.indexOf(current)+1)%list.length];
+
+  s.signals[type] = next;
+
+  saveDB();
+  openOneOnOne(rId);
+}
+function getActionAging(createdDate){
+
+  const created = new Date(createdDate);
+  const today = new Date();
+
+  const diffDays = Math.floor(
+    (today - created) / (1000*60*60*24)
+  );
+
+  if (diffDays <= 7) return { label:"Fresh", class:"fresh" };
+  if (diffDays <= 14) return { label:"Aging", class:"aging" };
+  return { label:"Stale", class:"stale" };
+}
+
+function toggleRisk(rId, sId){
+  const r = db.oneOnOnes.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  s.signals.risk = !s.signals.risk;
+
+  saveDB();
+  openOneOnOne(rId);
+}
+/*=============== end 1-1 module=======================*/
 
 function renderTasksPreserveSearch(){
   const input = document.getElementById("taskSearch");
