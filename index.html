@@ -1034,6 +1034,20 @@ body.locked #lockScreen {
 .hidden{
   display:none;
 }
+.team-health-header{
+  margin-top:8px;
+  margin-bottom:12px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.team-health-pill{
+  padding:4px 10px;
+  border-radius:16px;
+  background:#f3f3f3;
+  font-size:12px;
+}
 </style>
 </head>
 
@@ -1042,7 +1056,7 @@ body.locked #lockScreen {
 <!-- ================= HEADER ================= -->
 <header>
   <strong>🧠 Task Intelligence</strong>
- <small style="margin-left:8px;color:var(--muted)">v2.5</small>
+ <small style="margin-left:8px;color:var(--muted)">v3.0</small>
     <div id="headerScorecard"></div>
   </div>
   <div>
@@ -1304,18 +1318,23 @@ const btnCloseAI = document.getElementById("btnCloseAI");
    ========================================================= */
 
 /* ================= DATA ================= */
-let db = JSON.parse(localStorage.getItem("taskDB")) || {
-  
-  tasks: [],
-  meetings: [{ name: "My Tasks" }]
-  /*oneOnOnes: []*/
-};
 
-if (!db.oneOnOnes) db.oneOnOnes = [];
+let db = JSON.parse(localStorage.getItem("taskDB")) || {};
+
+// Ensure main collections exist
+db.tasks = Array.isArray(db.tasks) ? db.tasks : [];
+db.meetings = Array.isArray(db.meetings) ? db.meetings : [];
+
+// Initialize 1-1 module
 
 
-if (!Array.isArray(db.announcements)) {
-  db.announcements = [];
+
+if (!db.oneOnOnes) {
+  db.oneOnOnes = { reportees: [] };
+}
+
+if (!Array.isArray(db.oneOnOnes.reportees)) {
+  db.oneOnOnes.reportees = [];
 }
 
 // Optional but recommended: persist upgraded schema once
@@ -1327,6 +1346,64 @@ db.meetings = db.meetings.filter(m => m && m.name);
 
 const STATUSES = ["Not Started", "In-Progress", "Pending", "Closed"];
 const saveDB = () => localStorage.setItem("taskDB", JSON.stringify(db));
+// Fix old 1-1 structure
+if (Array.isArray(db.oneOnOnes)) {
+
+  db.oneOnOnes = {
+    reportees: db.oneOnOnes
+  };
+
+  saveDB();
+}
+
+/*let db = JSON.parse(localStorage.getItem("taskDB")) || {
+
+  tasks: [],
+  meetings: [{ name: "My Tasks" }]
+
+};
+
+if (!db.oneOnOnes) {
+  db.oneOnOnes = { reportees: [] };
+}
+
+if (!db.oneOnOnes.reportees) {
+  db.oneOnOnes.reportees = [];
+}
+*/
+/*if (!db.oneOnOnes) {
+  db.oneOnOnes = { reportees: [] };
+}
+
+if (!db.oneOnOnes.reportees) {
+  db.oneOnOnes.reportees = [];
+}
+
+if (!db.oneOnOnes) {
+  db.oneOnOnes = {
+    reportees: []
+  };
+}
+
+if (!db.oneOnOnes) {
+  db.oneOnOnes = { reportees: [] };
+}
+
+if (!db.oneOnOnes.reportees) {
+  db.oneOnOnes.reportees = [];
+}*/
+
+/*function saveDB(){
+  localStorage.setItem(
+    "taskDB",
+    JSON.stringify(db)
+  );
+}*/
+
+if (!Array.isArray(db.announcements)) {
+  db.announcements = [];
+}
+
 
 /* ================= STATE ================= */
 let view = { type: "all", value: null };
@@ -1447,6 +1524,7 @@ function renderSidebar() {
   👥 <span class="label">1-1 Workspace</span>
 </div>
 
+
 <div class="item"
      onclick="generateDailyHandoff()">
   🔄 <span class="label">Daily Handoff</span>
@@ -1476,7 +1554,7 @@ ${db.meetings.map(m => {
   `;
 }
 
-function setView(type, value=null) {
+function setView(type, value=null){
   view = { type, value };
   render();
 }
@@ -2852,6 +2930,7 @@ else if (view.type === "timeline") renderMeetingTimeline();
 else if (view.type === "admin") renderAdmin();
 else if (view.type === "announcements") renderAnnouncements();
 else if (view.type === "oneonone") renderOneOnOnes();
+else if (view.type === "team-health") renderTeamHealth();
 else if (view.type === "oneonone-detail") openOneOnOne(view.value);
 else renderTasks();
 }
@@ -2859,221 +2938,466 @@ else renderTasks();
 /* ====================1-1 Module ==================
 ======================================================*/
 function renderOneOnOnes(){
-normalizeOneOnOnes();
-  content.innerHTML = `
-    <div class="page-header">
-      <h2>1-1 Performance Workspace</h2>
-      <button onclick="addReportee()">＋ Add Reportee</button>
-    </div>
+console.log("renderOneOnOnes called");
+  const list = db.oneOnOnes.reportees;
 
-    ${db.oneOnOnes.length === 0
+  const teamHealth = list.map(r => {
+
+  const latestSession =
+    [...r.sessions]
+      .sort((a,b)=>b.date.localeCompare(a.date))[0];
+
+  let signal = "⚪";
+
+  if(latestSession && latestSession.signals){
+
+    if(latestSession.signals.delivery === "ontrack")
+      signal = "🟢";
+
+    if(latestSession.signals.delivery === "watch")
+      signal = "🟡";
+
+    if(latestSession.signals.delivery === "risk")
+      signal = "🔴";
+
+  }
+
+  return {
+    name: r.name,
+    signal
+  };
+
+});
+
+  content.innerHTML = `
+  <div class="oneonone-header">
+
+    <h2>1-1 Workspace</h2>
+
+
+<div class="team-health-header">
+
+${teamHealth.map(t => `
+  <span class="team-health-pill">
+    ${t.name} ${t.signal}
+  </span>
+`).join("")}
+
+</div>
+
+    <button onclick="addReporteePrompt()">
+      + Add Reportee
+    </button>
+
+  </div>
+
+  ${
+    list.length === 0
       ? `<div class="empty-state">No reportees added yet</div>`
       : `
         <div class="oneonone-grid">
-          ${db.oneOnOnes.map(o => `
-            <div class="oneonone-card"
-              onclick="setView('oneonone-detail','${o.id}')">
-              <strong>${o.person}</strong>
-              <div class="muted">${o.role || "Role not set"}</div>
-              <div class="muted">
-                Sessions: ${o.sessions.length}
+
+          ${list.map(r => {
+
+            const lastSession =
+              r.sessions.length > 0
+                ? r.sessions[r.sessions.length-1].date
+                : "No sessions";
+
+            const openActions =
+              r.sessions
+                .flatMap(s => s.actions)
+                .filter(a => a.status !== "closed").length;
+
+            return `
+              <div class="oneonone-card"
+                   onclick="setView('oneonone-detail','${r.id}')">
+
+                <strong>${r.name}</strong>
+
+                <div class="muted">
+                  ${r.role || ""}
+                </div>
+
+                <div class="muted" style="margin-top:8px">
+                  Last 1-1: ${lastSession}
+                </div>
+
+                <div class="muted">
+                  Open actions: ${openActions}
+                </div>
+
               </div>
-            </div>
-          `).join("")}
+            `;
+
+          }).join("")}
+
         </div>
-      `}
+      `
+  }
   `;
 }
-function addReportee(){
-  const name = prompt("Reportee name");
-  if (!name) return;
 
-  const role = prompt("Role / Title") || "";
-
-  db.oneOnOnes.push({
+function createReportee(name, role){
+  return {
     id: crypto.randomUUID(),
-    person: name,
+    name,
     role,
-    cadence: "Weekly",
     createdAt: new Date().toISOString(),
-    sessions: []
-  });
 
-  saveDB();
-  render();
+    development:{
+      goals:[],
+      skills:[],
+      notes:""
+    },
+
+    sessions:[]
+  }
 }
-function openOneOnOne(id){
-  const o = db.oneOnOnes.find(x => x.id === id);
-  if (!o) return;
 
-  view = { type: "oneonone-detail", value: id };
+function createOneOnOneSession(){
 
-  content.innerHTML = `
-    <div class="oneonone-header">
-      <div>
-        <h2>${o.person}</h2>
-        <div class="muted">
-          ${o.role || "Role not set"} | Cadence: ${o.cadence}
-        </div>
-      </div>
+  return {
 
-      <div>
-        <button onclick="createOneOnOneSession('${o.id}')">
-          ＋ New Session
-        </button>
-        <button class="secondary"
-          onclick="setView('oneonone')">
-          ← Back
-        </button>
-      </div>
-    </div>
-
-    <div id="oneonone-sessions">
-      ${o.sessions.length === 0
-        ? `<div class="empty-state">No sessions yet</div>`
-        : o.sessions.map(s => `
-  <div class="oneonone-session">
-
-    <div class="session-header"
-      onclick="toggleSession('${o.id}','${s.id}')">
-      <strong>${s.date}</strong>
-<div class="session-meta">
-  📌 ${s.agenda.length} |
-  📝 ${s.notes.length} |
-  ✅ ${s.actions.length}
-</div>
-<div class="session-signals">
-  ${renderSignals(o.id, s.id, s.signals)}
-</div>
-    </div>
-
-    <div id="session-${s.id}" class="session-body">
-
-      <!-- AGENDA -->
-      <div class="session-section">
-        <h4>Agenda</h4>
-
-        ${s.agenda.length === 0
-          ? `<div class="muted">No agenda items</div>`
-          : s.agenda.map(a => `
-              <div class="editable-row">
-                <span contenteditable
-                  onblur="updateAgenda('${o.id}','${s.id}','${a.id}',this.textContent)">
-                  ${a.text}
-                </span>
-                <button class="icon danger"
-                  onclick="deleteAgenda('${o.id}','${s.id}','${a.id}')">✖</button>
-              </div>
-            `).join("")}
-
-        <button class="secondary"
-          onclick="addAgenda('${o.id}','${s.id}')">
-          ＋ Add Agenda
-        </button>
-      </div>
-
-      <!-- NOTES -->
-      <div class="session-section">
-        <h4>Notes</h4>
-
-        ${s.notes.length === 0
-          ? `<div class="muted">No notes yet</div>`
-          : s.notes.map(n => `
-              <div class="editable-row">
-                <span contenteditable
-                  onblur="updateNote('${o.id}','${s.id}','${n.id}',this.textContent)">
-                  ${n.text}
-                </span>
-                <button class="icon danger"
-                  onclick="deleteNote('${o.id}','${s.id}','${n.id}')">✖</button>
-              </div>
-            `).join("")}
-
-        <button class="secondary"
-          onclick="addNote('${o.id}','${s.id}')">
-          ＋ Add Note
-        </button>
-      </div>
-
-      <!-- ACTIONS -->
-      <div class="session-section">
-        <h4>Actions</h4>
-
-        ${s.actions.length === 0
-          ? `<div class="muted">No actions</div>`
-          : s.actions.map(a => `
-const aging = getActionAging(a.created);
-
-<div class="action-row ${aging.color}">
-                <input type="checkbox"
-                  ${a.status === "Closed" ? "checked" : ""}
-                  onchange="toggleAction('${o.id}','${s.id}','${a.id}')">
-
-                <span class="${a.status === "Closed" ? "action-closed" : ""}"
-  contenteditable
-  onblur="updateAction('${o.id}','${s.id}','${a.id}',this.textContent)">
-  ${a.text}
-</span>
-
-                <button class="icon danger"
-                  onclick="deleteAction('${o.id}','${s.id}','${a.id}')">✖</button>
-              </div>
-            `).join("")}
-
-        <button class="secondary"
-          onclick="addAction('${o.id}','${s.id}')">
-          ＋ Add Action
-        </button>
-      </div>
-
-    </div>
-  </div>
-          `).join("")}
-    </div>
-  `;
-}
-function normalizeOneOnOnes(){
-  db.oneOnOnes.forEach(o=>{
-    o.sessions.forEach(s=>{
-
-      if (!s.signals){
-        s.signals = {
-          execution: "ontrack",
-          ownership: "strong",
-          communication: "clear",
-          morale: "neutral",
-          riskLevel: "low"
-        };
-      }
-
-    });
-  });
-}
-function createOneOnOneSession(oneId){
-  const o = db.oneOnOnes.find(x => x.id === oneId);
-  if (!o) return;
-
-  o.sessions.unshift({
     id: crypto.randomUUID(),
+
     date: new Date().toISOString().slice(0,10),
-    agenda: [],
+
+    wins: [],
+
+    challenges: [],
+
+    priorities: [],
+
     notes: [],
+
     actions: [],
 
     signals: {
-      execution: "ontrack",
-      ownership: "strong",
-      communication: "clear",
-      morale: "neutral",
-      riskLevel: "low"
+      mood: "neutral",
+      delivery: "ontrack",
+      growth: "stable",
+      risk: false
+    }
+
+  };
+
+}
+function addReporteePrompt(){
+  const name = prompt("Reportee name");
+  if(!name) return;
+  const role = prompt("Role");
+  const reportee = createReportee(name, role);
+  db.oneOnOnes.reportees.push(reportee);
+  console.log("After push:", db.oneOnOnes);
+  saveDB();
+  render();
+}
+function createReportee(name, role){
+
+  return {
+
+    id: crypto.randomUUID(),
+
+    name,
+
+    role,
+
+    createdAt: new Date().toISOString(),
+
+    development:{
+      goals:[],
+      skills:[],
+      notes:""
     },
 
-    aiSummary: null
+    sessions:[]
+
+  };
+
+}
+function openOneOnOne(id){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===id);
+  if(!r) return;
+
+  view = { type:"oneonone-detail", value:id };
+
+  const openActions =
+    r.sessions
+      .flatMap(s => s.actions || [])
+      .filter(a => a.status !== "closed");
+
+  const html = `
+
+  <h2>${r.name}</h2>
+
+  <button onclick="createSession('${r.id}')">
+    Start Session
+  </button>
+
+  <h3>Carry Forward Actions</h3>
+
+  ${
+    openActions.length === 0
+      ? `<div class="muted">No open actions</div>`
+      : openActions.map(a=>`
+          <div class="carry-action">
+            ${a.text}
+          </div>
+        `).join("")
+  }
+
+  <h3>Sessions</h3>
+
+  ${[...r.sessions]
+    .sort((a,b)=>b.date.localeCompare(a.date))
+    .map(s=>`
+
+      <div class="oneonone-session"
+           onclick="openSession('${r.id}','${s.id}')">
+
+        ${s.date}
+
+      </div>
+
+  `).join("")}
+
+  `;
+
+  content.innerHTML = html;
+
+}
+
+function createSession(reporteeId){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===reporteeId);
+  if(!r) return;
+
+  r.sessions.push(createOneOnOneSession());
+
+  saveDB();   // important
+
+  openOneOnOne(reporteeId);
+
+}
+
+function openSession(rId, sId){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  const html = `
+
+  <h2>Session ${s.date}</h2>
+
+  <h3>Wins</h3>
+<textarea id="wins">${s.wins.join("\n")}</textarea>
+
+  <h3>Challenges</h3>
+<textarea id="challenges">${s.challenges.join("\n")}</textarea>
+
+  <h3>Priorities</h3>
+<textarea id="priorities">${s.priorities.join("\n")}</textarea>
+
+  <h3>Notes</h3>
+<textarea id="notes">${s.notes.join("\n")}</textarea>
+
+<h3>Signals</h3>
+
+<label>Mood</label>
+<select id="mood">
+  <option value="positive" ${s.signals.mood==="positive"?"selected":""}>🙂 Positive</option>
+  <option value="neutral" ${s.signals.mood==="neutral"?"selected":""}>😐 Neutral</option>
+  <option value="low" ${s.signals.mood==="low"?"selected":""}>🙁 Low</option>
+</select>
+
+
+<label>Delivery</label>
+<select id="delivery">
+  <option value="ontrack" ${s.signals.delivery==="ontrack"?"selected":""}>🟢 On Track</option>
+  <option value="watch" ${s.signals.delivery==="watch"?"selected":""}>🟡 Watch</option>
+  <option value="risk" ${s.signals.delivery==="risk"?"selected":""}>🔴 Risk</option>
+</select>
+
+<label>Growth</label>
+<select id="growth">
+  <option value="improving" ${s.signals.growth==="improving"?"selected":""}>📈 Improving</option>
+  <option value="stable" ${s.signals.growth==="stable"?"selected":""}>➡ Stable</option>
+  <option value="declining" ${s.signals.growth==="declining"?"selected":""}>📉 Declining</option>
+</select>
+
+  <h3>Actions</h3>
+
+  <button onclick="addAction('${rId}','${sId}')">
+  Add Action
+  </button>
+  
+  <button onclick="saveSession('${rId}','${sId}')">
+Save Session
+</button>
+
+  <div id="action-list">
+  ${s.actions.map(a=>`
+
+    <div>
+      ${a.text}
+      <button onclick="closeAction('${rId}','${sId}','${a.id}')">
+      ✔
+      </button>
+    </div>
+
+  `).join("")}
+  </div>
+  
+
+
+  `;
+
+  content.innerHTML = html;
+
+}
+function addAction(rId,sId){
+
+  const text = prompt("Action");
+  if(!text) return;
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  s.actions.push({
+
+    id:crypto.randomUUID(),
+    text,
+    status:"open",
+    createdAt:new Date().toISOString()
+
   });
 
   saveDB();
-  openOneOnOne(oneId);
+  openSession(rId,sId);
+
 }
+function closeAction(rId,sId,aId){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  const a = s.actions.find(x=>x.id===aId);
+
+  a.status = "closed";
+  a.closedAt = new Date().toISOString();
+
+  saveDB();
+  openSession(rId,sId);
+
+}
+function saveSession(rId, sId){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  s.wins = document.getElementById("wins").value
+    .split("\n")
+    .filter(x=>x.trim());
+
+  s.challenges = document.getElementById("challenges").value
+    .split("\n")
+    .filter(x=>x.trim());
+
+  s.priorities = document.getElementById("priorities").value
+    .split("\n")
+    .filter(x=>x.trim());
+
+  s.notes = document.getElementById("notes").value
+    .split("\n")
+    .filter(x=>x.trim());
+    
+  s.signals = {
+
+  mood: document.getElementById("mood").value,
+  delivery: document.getElementById("delivery").value,
+  growth: document.getElementById("growth").value,
+  risk: document.getElementById("delivery").value === "risk"
+
+};
+
+  saveDB();   // important
+
+  notify("Session saved","success");
+
+}
+
+function renderTeamHealth(){
+
+  const list = db.oneOnOnes.reportees;
+
+  const html = `
+
+  <h2>Team Health Dashboard</h2>
+
+  ${
+    list.length === 0
+      ? `<div class="empty-state">No reportees added yet</div>`
+      : `
+        <div class="team-health">
+
+        ${list.map(r => {
+
+          const latestSession =
+            [...r.sessions]
+              .sort((a,b)=>b.date.localeCompare(a.date))[0];
+
+          let signal = "⚪ No data";
+          let statusClass = "muted";
+
+          if(latestSession && latestSession.signals){
+
+            if(latestSession.signals.delivery === "ontrack"){
+              signal = "🟢 On Track";
+              statusClass = "green";
+            }
+
+            if(latestSession.signals.delivery === "watch"){
+              signal = "🟡 Watch";
+              statusClass = "orange";
+            }
+
+            if(latestSession.signals.delivery === "risk"){
+              signal = "🔴 Risk";
+              statusClass = "red";
+            }
+
+          }
+
+          return `
+
+          <div class="team-health-card"
+               onclick="setView('oneonone-detail','${r.id}')">
+
+            <strong>${r.name}</strong>
+
+            <div class="${statusClass}">
+              ${signal}
+            </div>
+
+          </div>
+
+          `;
+
+        }).join("")}
+
+        </div>
+      `
+  }
+
+  `;
+
+  content.innerHTML = html;
+
+}
+
+/*
 function toggleSession(oneId, sessionId){
   const el = document.getElementById("session-" + sessionId);
   if (el) el.classList.toggle("hidden");
@@ -3246,7 +3570,7 @@ function getActionAging(createdDate){
   if (diffDays <= 14) return { label:"Aging", class:"aging" };
   return { label:"Stale", class:"stale" };
 }
-
+*/
 function toggleRisk(rId, sId){
   const r = db.oneOnOnes.find(x=>x.id===rId);
   const s = r.sessions.find(x=>x.id===sId);
@@ -4466,6 +4790,7 @@ function renderOutcomePane(){
 
   renderOutcomeUpdates(item);
 }
+let hasPassword = false;
 
 if (hasPassword() && isLocked()) {
   lockApp();
