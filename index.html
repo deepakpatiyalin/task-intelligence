@@ -3135,6 +3135,9 @@ function openOneOnOne(id){
   <button onclick="createSession('${r.id}')">
     Start Session
   </button>
+ <button onclick="generateSummary('${r.id}')">
+  Generate Summary
+ </button>
 
   <h3>Carry Forward Actions</h3>
 
@@ -3236,6 +3239,11 @@ function openSession(rId, sId){
   <button onclick="saveSession('${rId}','${sId}')">
 Save Session
 </button>
+
+<button onclick="generateAISummary('${rId}','${sId}')">
+AI Summary
+</button>
+
 
   <div id="action-list">
   ${s.actions.map(a=>`
@@ -3394,6 +3402,130 @@ function renderTeamHealth(){
   `;
 
   content.innerHTML = html;
+
+}
+
+function generateSummary(rId){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
+  if(!r) return;
+
+  let wins = [];
+  let challenges = [];
+  let completedActions = 0;
+  let signalTrend = [];
+
+  r.sessions.forEach(s => {
+
+    wins.push(...(s.wins || []));
+    challenges.push(...(s.challenges || []));
+
+    (s.actions || []).forEach(a=>{
+      if(a.status === "closed") completedActions++;
+    });
+
+    if(s.signals && s.signals.delivery){
+      signalTrend.push(s.signals.delivery);
+    }
+
+  });
+
+  const trendIcons = signalTrend.map(sig => {
+
+    if(sig === "ontrack") return "🟢";
+    if(sig === "watch") return "🟡";
+    if(sig === "risk") return "🔴";
+
+    return "⚪";
+
+  });
+
+  const html = `
+
+  <h2>Summary — ${r.name}</h2>
+
+  <h3>Wins</h3>
+  <ul>
+  ${wins.map(w => `<li>${w}</li>`).join("")}
+  </ul>
+
+  <h3>Challenges</h3>
+  <ul>
+  ${challenges.map(c => `<li>${c}</li>`).join("")}
+  </ul>
+
+  <h3>Actions Completed</h3>
+  ${completedActions}
+
+  <h3>Signal Trend</h3>
+  ${trendIcons.join(" → ")}
+
+  <br><br>
+
+  <button onclick="openOneOnOne('${r.id}')">
+  Back
+  </button>
+
+  `;
+
+  content.innerHTML = html;
+
+}
+
+function generateAISummary(rId, sId){
+
+  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
+  const s = r.sessions.find(x=>x.id===sId);
+
+  if(!s) return;
+
+  const wins = (s.wins || []).join(", ");
+  const challenges = (s.challenges || []).join(", ");
+  const notes = (s.notes || []).join(", ");
+
+  const delivery = s.signals?.delivery || "unknown";
+
+  let deliveryText = "stable";
+
+  if(delivery === "watch") deliveryText = "showing some delivery pressure";
+  if(delivery === "risk") deliveryText = "at delivery risk";
+
+  const summary = `
+
+Summary
+
+${r.name} discussed progress during the session.
+
+Wins
+${wins || "No major wins recorded."}
+
+Challenges
+${challenges || "No major challenges recorded."}
+
+Notes
+${notes || "No discussion notes recorded."}
+
+Performance Insight
+Delivery appears ${deliveryText}.
+
+Suggested Focus
+Review open actions and address blockers in the next meeting.
+
+`;
+
+  content.innerHTML = `
+
+<h2>AI Meeting Summary</h2>
+
+<pre style="white-space:pre-wrap">${summary}</pre>
+
+<br>
+
+<button onclick="openSession('${r.id}','${s.id}')">
+Back to Session
+</button>
+
+`;
 
 }
 
