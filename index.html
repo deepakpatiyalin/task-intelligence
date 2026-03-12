@@ -1048,6 +1048,71 @@ body.locked #lockScreen {
   background:#f3f3f3;
   font-size:12px;
 }
+.session-title{
+margin-bottom:12px;
+}
+
+.session-grid{
+display:grid;
+grid-template-columns:1fr;
+gap:12px;
+}
+
+.session-card{
+background:white;
+border:1px solid #e5e5e5;
+border-radius:10px;
+padding:14px;
+box-shadow:0 1px 3px rgba(0,0,0,0.05);
+}
+
+.session-card h3{
+margin-top:0;
+font-size:14px;
+}
+
+textarea{
+width:100%;
+min-height:70px;
+padding:8px;
+border-radius:6px;
+border:1px solid #ccc;
+}
+
+.signals-row{
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+align-items:center;
+}
+
+.signals-row label{
+font-size:12px;
+color:#666;
+}
+
+.actions-card button{
+margin-top:8px;
+}
+
+.session-actions{
+display:flex;
+gap:10px;
+margin-top:12px;
+}
+
+.session-actions button{
+padding:8px 14px;
+border-radius:6px;
+border:none;
+background:#3b6df6;
+color:white;
+cursor:pointer;
+}
+
+.session-actions button:hover{
+opacity:0.9;
+}
 </style>
 </head>
 
@@ -1056,7 +1121,7 @@ body.locked #lockScreen {
 <!-- ================= HEADER ================= -->
 <header>
   <strong>🧠 Task Intelligence</strong>
- <small style="margin-left:8px;color:var(--muted)">v3.1</small>
+ <small style="margin-left:8px;color:var(--muted)">v3.2</small>
     <div id="headerScorecard"></div>
   </div>
   <div>
@@ -3192,51 +3257,76 @@ function openSession(rId, sId){
 
   const html = `
 
-  <h2>Session ${s.date}</h2>
+<h2 class="session-title">Session ${s.date}</h2>
 
-  <h3>Wins</h3>
+<div class="session-grid">
+
+<div class="session-card">
+<h3>Wins</h3>
 <textarea id="wins">${s.wins.join("\n")}</textarea>
+</div>
 
-  <h3>Challenges</h3>
+<div class="session-card">
+<h3>Challenges</h3>
 <textarea id="challenges">${s.challenges.join("\n")}</textarea>
+</div>
 
-  <h3>Priorities</h3>
+<div class="session-card">
+<h3>Priorities</h3>
 <textarea id="priorities">${s.priorities.join("\n")}</textarea>
+</div>
 
-  <h3>Notes</h3>
+<div class="session-card">
+<h3>Notes</h3>
 <textarea id="notes">${s.notes.join("\n")}</textarea>
+</div>
+
+</div>
+
+<div class="session-card signals-card">
 
 <h3>Signals</h3>
 
+<div class="signals-row">
+
 <label>Mood</label>
 <select id="mood">
-  <option value="positive" ${s.signals.mood==="positive"?"selected":""}>🙂 Positive</option>
-  <option value="neutral" ${s.signals.mood==="neutral"?"selected":""}>😐 Neutral</option>
-  <option value="low" ${s.signals.mood==="low"?"selected":""}>🙁 Low</option>
+<option value="positive">🙂 Positive</option>
+<option value="neutral">😐 Neutral</option>
+<option value="low">🙁 Low</option>
 </select>
-
 
 <label>Delivery</label>
 <select id="delivery">
-  <option value="ontrack" ${s.signals.delivery==="ontrack"?"selected":""}>🟢 On Track</option>
-  <option value="watch" ${s.signals.delivery==="watch"?"selected":""}>🟡 Watch</option>
-  <option value="risk" ${s.signals.delivery==="risk"?"selected":""}>🔴 Risk</option>
+<option value="ontrack">🟢 On Track</option>
+<option value="watch">🟡 Watch</option>
+<option value="risk">🔴 Risk</option>
 </select>
 
 <label>Growth</label>
 <select id="growth">
-  <option value="improving" ${s.signals.growth==="improving"?"selected":""}>📈 Improving</option>
-  <option value="stable" ${s.signals.growth==="stable"?"selected":""}>➡ Stable</option>
-  <option value="declining" ${s.signals.growth==="declining"?"selected":""}>📉 Declining</option>
+<option value="improving">📈 Improving</option>
+<option value="stable">➡ Stable</option>
+<option value="declining">📉 Declining</option>
 </select>
 
-  <h3>Actions</h3>
+</div>
 
-  <button onclick="addAction('${rId}','${sId}')">
-  Add Action
-  </button>
-  
-  <button onclick="saveSession('${rId}','${sId}')">
+</div>
+
+<div class="session-card actions-card">
+
+<h3>Actions</h3>
+
+<div id="action-list"></div>
+
+<button onclick="addAction('${rId}','${sId}')">Add Action</button>
+
+</div>
+
+<div class="session-actions">
+
+<button onclick="saveSession('${rId}','${sId}')">
 Save Session
 </button>
 
@@ -3244,19 +3334,7 @@ Save Session
 AI Summary
 </button>
 
-
-  <div id="action-list">
-  ${s.actions.map(a=>`
-
-    <div>
-      ${a.text}
-      <button onclick="closeAction('${rId}','${sId}','${a.id}')">
-      ✔
-      </button>
-    </div>
-
-  `).join("")}
-  </div>
+</div>
   
 
 
@@ -3770,7 +3848,8 @@ function renderMeetingTimeline(){
   let aiSummaryHtml = "";
   
   const meetingName = view.value;
-  const m = db.meetings.find(x => x.name === meetingName);
+/*  const m = db.meetings.find(x => x.name === meetingName); show archived meetings*/
+const m = db.meetings.find(x => x.name === meetingName && !x.archived);
   if (!m) return;
 
   if (m.aiTimelineSummary && m.aiTimelineSummary.text) {
