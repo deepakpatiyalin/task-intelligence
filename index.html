@@ -4188,31 +4188,27 @@ function generateAIPrompt(){
   }
   
   const prompt = `
-You are a senior meeting reviewer and decision coach.
+You are a senior meeting reviewer and decision coach. Your goal is to extract high-fidelity signals from meeting transcripts, distinguishing between definitive agreements and mere suggestions.
 
 Review the meeting transcript below and provide:
 
-1. CLEAR DECISIONS that were made with who confirmed (or confirm if none)
-2. UNCLEAR or AMBIGUOUS points that need follow-up and who raised
-3. RISKS or DEPENDENCIES that may cause delays and who raised
-4. SUGGESTED FOLLOW-UP TASKS (short, actionable with owner)
+CLEAR DECISIONS: Definitive agreements made. Include any options that were explicitly rejected (e.g., "We will not use X"). Note who confirmed or gave the final "OK."
+UNCLEAR/AMBIGUOUS POINTS: Points where a question was asked but not fully answered, or where a suggestion was made but no "owner" or "next step" was agreed upon. Note who raised the point.
+RISKS & DEPENDENCIES: Any "if/then" scenarios, technical hurdles, license requirements, or external team dependencies that could stall progress. Note who raised them.
+SUGGESTED FOLLOW-UP TASKS: Short, actionable tasks. If an owner wasn't assigned in the text, assign the most logical owner based on the context.
 
-Return STRICT JSON ONLY:
-
+Return STRICT JSON ONLY with the following keys:
 {
-  "decisions": ["..."],
-  "questions": ["..."],
-  "risks": ["..."],
-  "task_candidates": ["..."]
+"decisions": ["[Decision] - [Confirmed by Name]"],
+"questions": ["[Ambiguous Point] - [Raised by Name]"],
+"risks": ["[Risk/Dependency] - [Raised by Name]"],
+"task_candidates": ["[Actionable Task] - [Owner Name]"]
 }
 
-Additionally, provide ONE leadership-level summary paragraph that:
-- Covers all decisions and all open questions
-- Does not omit any point
-- Is suitable for executive recall
-
-Return it as:
-"timeline_summary": "..."
+Additionally, provide a "timeline_summary" string that:
+Synthesizes all decisions and all open questions into a single, cohesive narrative.
+Explicitly mentions every major project folder, tool, or person discussed.
+Is written for executive recall (high-impact, low-filler).
 
 Transcript:
 <<<
