@@ -2775,6 +2775,7 @@ if (filters.hideClosed) {
 
     <table>
       <tr>
+        <th>Creation Date</th>
         <th>Task Description</th>
         <th>Tags</th>
         <th>Status</th>
@@ -2785,7 +2786,10 @@ if (filters.hideClosed) {
       ${tasks.map(t => `
         <tr data-task-id="${t.id}" class="${isOverdue(t)?'overdue':t.status.toLowerCase().replace(" ","-")}"
             oncontextmenu="event.preventDefault();openTaskPane('${t.id}')">
-          <td contenteditable
+            <td contenteditable
+   				 onblur="updateTaskTitle('${t.id}', this.textContent)">${t.created ? new Date(t.created).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : ""}
+			</td>
+			<td contenteditable
    				 onblur="updateTaskTitle('${t.id}', this.textContent)">${t.title}
 			</td>
 		  <td contenteditable
@@ -4152,10 +4156,10 @@ SUGGESTED FOLLOW-UP TASKS: Short, actionable tasks. If an owner wasn't assigned 
 
 Return STRICT JSON ONLY with the following keys:
 {
-"decisions": ["[Decision] - [Confirmed by Name]"],
-"questions": ["[Ambiguous Point] - [Raised by Name]"],
-"risks": ["[Risk/Dependency] - [Raised by Name]"],
-"task_candidates": ["[Actionable Task] - [Owner Name]"]
+"decisions": [" - [Confirmed by Name]"],
+"questions": [" - [Raised by Name]"],
+"risks": [" - [Raised by Name]"],
+"task_candidates": [" - [Owner Name]"]
 }
 
 Additionally, provide a "timeline_summary" string that:
