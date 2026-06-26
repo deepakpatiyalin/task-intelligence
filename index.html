@@ -1377,7 +1377,7 @@ td[contenteditable]:focus {
 <!-- ================= HEADER ================= -->
 <header>
   <strong>🧠 Task Intelligence</strong>
- <small style="margin-left:8px;color:var(--muted)">v3.5</small>
+ <small style="margin-left:8px;color:var(--muted)">v3.3</small>
     <div id="headerScorecard"></div>
   </div>
   <div>
@@ -5414,30 +5414,42 @@ function healJSONQuotes(str) {
 function parseAIReview(){
   let data;
   try {
-    const raw = aiText.value;
+    const raw = aiText.value.trim();
+    if (!raw) { notify("Paste the AI response first.", "warn", 5000); return; }
 
     // Step 1 — sanitize invisible/encoding artifacts introduced by AI chat UIs
     const sanitized = raw
-      .replace(/^﻿/, '')                          // BOM
-      .replace(/“|”/g, '"')                  // curly double quotes → straight
-      .replace(/‘|’/g, "'")                  // curly single quotes → straight
-      .replace(/–|—/g, '-')                  // em/en dash → hyphen
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''); // control chars
+      .replace(/^﻿/, '')
+      .replace(/“|”/g, '"')
+      .replace(/‘|’/g, "'")
+      .replace(/–|—/g, '-')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
 
-    // Step 2 — extract the outermost { … } (handles markdown fences, preamble text)
-    const start = sanitized.indexOf("{");
-    const end   = sanitized.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) throw new Error("no JSON object found");
-    const extracted = sanitized.slice(start, end + 1);
+    // Step 2 — try code fence first, then outermost { }
+    let extracted = null;
+    const fenceMatch = sanitized.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (fenceMatch) {
+      extracted = fenceMatch[1].trim();
+    } else {
+      const start = sanitized.indexOf("{");
+      const end   = sanitized.lastIndexOf("}");
+      if (start !== -1 && end > start) extracted = sanitized.slice(start, end + 1);
+    }
+
+    if (!extracted) throw new Error("No JSON found. Make sure you copied the full AI response including the { } block.");
 
     // Step 3 — try standard parse, then healed parse
     try {
       data = JSON.parse(extracted);
-    } catch {
-      data = JSON.parse(healJSONQuotes(extracted));
+    } catch (e1) {
+      try {
+        data = JSON.parse(healJSONQuotes(extracted));
+      } catch (e2) {
+        throw new Error("JSON malformed: " + e2.message + "\n\nFirst 200 chars extracted:\n" + extracted.slice(0, 200));
+      }
     }
   } catch (err) {
-    notify("Could not parse — copy the full AI response and try again.", "error", 8000);
+    notify("Could not parse — " + err.message, "error", 10000);
     console.error("JSON parse error:", err);
     return;
   }
@@ -6318,42 +6330,52 @@ function renderOutcomePane(){
   const m = activeOutcomeMeeting;
   if (!m || !activeOutcomeType || !activeOutcomeId) return;
 
-  let item;
-  if (activeOutcomeType === "decision") {
-    item = m.decisions.find(x => x.id === activeOutcomeId);
-  } else if (activeOutcomeType === "question") {
-    item = m.questions.find(x => x.id === activeOutcomeId);
-  } else if (activeOutcomeType === "risk") {
-    item = m.risks.find(x => x.id === activeOutcomeId);
-  } else if (activeOutcomeType === "task_candidate") {
-    item = m.task_candidates.find(x => x.id === activeOutcomeId);
+  // Questions: show all questions for this meeting in checklist style
+  if (activeOutcomeType === "question") {
+    normalizeMeetingOutcomes(m);
+    const questions = m.questions || [];
+    paneTitle.textContent = `❓ Questions`;
+    paneMeta.textContent = `${m.name} · ${questions.length} question${questions.length !== 1 ? "s" : ""}`;
+
+    const rows = questions.map(q => {
+      const checked = q.resolved ? "checked" : "";
+      const rowStyle = q.id === activeOutcomeId
+        ? "background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--accent)"
+        : "padding:10px 12px;margin-bottom:10px;border-left:3px solid transparent";
+      const textStyle = q.resolved
+        ? "font-size:13px;font-weight:600;color:var(--muted);text-decoration:line-through"
+        : "font-size:13px;font-weight:600;color:var(--text)";
+      const answerHtml = (q.answer && q.answer.trim() && q.answer !== "null")
+        ? `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);line-height:1.5">💡 ${escapeHtml(q.answer)}</div>`
+        : `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);opacity:0.6">💡 No answer recorded yet</div>`;
+      return `
+        <div style="${rowStyle}">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <input type="checkbox" ${checked} style="margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--accent)"
+              onchange="markResolved('${escapeHtml(m.name)}','question','${q.id}')">
+            <span style="${textStyle}">${escapeHtml(q.text)}</span>
+          </div>
+          ${answerHtml}
+        </div>`;
+    }).join("");
+
+    paneBody.innerHTML = rows || `<div style="color:var(--muted);font-size:13px">No questions recorded yet.</div>`;
+    return;
   }
+
+  // All other types: single-item detail view
+  let item;
+  if (activeOutcomeType === "decision")            item = m.decisions.find(x => x.id === activeOutcomeId);
+  else if (activeOutcomeType === "risk")            item = m.risks.find(x => x.id === activeOutcomeId);
+  else if (activeOutcomeType === "task_candidate")  item = m.task_candidates.find(x => x.id === activeOutcomeId);
 
   if (!item) return;
 
   paneTitle.textContent = `${outcomeTypeIcon(activeOutcomeType)} ${item.text}`;
   paneMeta.textContent = `${activeOutcomeType.replace("_"," ").toUpperCase()} • ${new Date(item.ts).toLocaleString()}`;
 
-  // Build pane body content
-  let html = "";
-
-  // Answer block for questions
-  if (activeOutcomeType === "question") {
-    if (item.answer && item.answer.trim()) {
-      html += `<div style="margin:0 0 16px 0;padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid var(--accent)">
-        <small style="color:var(--muted);font-weight:600">💡 Answer / Suggestion</small><br>
-        <span style="font-size:13px;line-height:1.5">${escapeHtml(item.answer)}</span>
-      </div>`;
-    } else {
-      html += `<div style="margin:0 0 16px 0;padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid var(--border);color:var(--muted);font-size:13px">
-        💡 No answer recorded yet
-      </div>`;
-    }
-  }
-
-  // Updates / notes for any outcome type
   const updates = Array.isArray(item.updates) ? item.updates : [];
-  html += updates.map(u => `
+  let html = updates.map(u => `
     <div class="note">
       ${escapeHtml(u.text)}<br>
       <small>${new Date(u.ts).toLocaleString()}</small>
@@ -8165,42 +8187,52 @@ function renderOutcomePane(){
   const m = activeOutcomeMeeting;
   if (!m || !activeOutcomeType || !activeOutcomeId) return;
 
-  let item;
-  if (activeOutcomeType === "decision") {
-    item = m.decisions.find(x => x.id === activeOutcomeId);
-  } else if (activeOutcomeType === "question") {
-    item = m.questions.find(x => x.id === activeOutcomeId);
-  } else if (activeOutcomeType === "risk") {
-    item = m.risks.find(x => x.id === activeOutcomeId);
-  } else if (activeOutcomeType === "task_candidate") {
-    item = m.task_candidates.find(x => x.id === activeOutcomeId);
+  // Questions: show all questions for this meeting in checklist style
+  if (activeOutcomeType === "question") {
+    normalizeMeetingOutcomes(m);
+    const questions = m.questions || [];
+    paneTitle.textContent = `❓ Questions`;
+    paneMeta.textContent = `${m.name} · ${questions.length} question${questions.length !== 1 ? "s" : ""}`;
+
+    const rows = questions.map(q => {
+      const checked = q.resolved ? "checked" : "";
+      const rowStyle = q.id === activeOutcomeId
+        ? "background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--accent)"
+        : "padding:10px 12px;margin-bottom:10px;border-left:3px solid transparent";
+      const textStyle = q.resolved
+        ? "font-size:13px;font-weight:600;color:var(--muted);text-decoration:line-through"
+        : "font-size:13px;font-weight:600;color:var(--text)";
+      const answerHtml = (q.answer && q.answer.trim() && q.answer !== "null")
+        ? `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);line-height:1.5">💡 ${escapeHtml(q.answer)}</div>`
+        : `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);opacity:0.6">💡 No answer recorded yet</div>`;
+      return `
+        <div style="${rowStyle}">
+          <div style="display:flex;align-items:flex-start;gap:10px">
+            <input type="checkbox" ${checked} style="margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--accent)"
+              onchange="markResolved('${escapeHtml(m.name)}','question','${q.id}')">
+            <span style="${textStyle}">${escapeHtml(q.text)}</span>
+          </div>
+          ${answerHtml}
+        </div>`;
+    }).join("");
+
+    paneBody.innerHTML = rows || `<div style="color:var(--muted);font-size:13px">No questions recorded yet.</div>`;
+    return;
   }
+
+  // All other types: single-item detail view
+  let item;
+  if (activeOutcomeType === "decision")            item = m.decisions.find(x => x.id === activeOutcomeId);
+  else if (activeOutcomeType === "risk")            item = m.risks.find(x => x.id === activeOutcomeId);
+  else if (activeOutcomeType === "task_candidate")  item = m.task_candidates.find(x => x.id === activeOutcomeId);
 
   if (!item) return;
 
   paneTitle.textContent = `${outcomeTypeIcon(activeOutcomeType)} ${item.text}`;
   paneMeta.textContent = `${activeOutcomeType.replace("_"," ").toUpperCase()} • ${new Date(item.ts).toLocaleString()}`;
 
-  // Build pane body content
-  let html = "";
-
-  // Answer block for questions
-  if (activeOutcomeType === "question") {
-    if (item.answer && item.answer.trim()) {
-      html += `<div style="margin:0 0 16px 0;padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid var(--accent)">
-        <small style="color:var(--muted);font-weight:600">💡 Answer / Suggestion</small><br>
-        <span style="font-size:13px;line-height:1.5">${escapeHtml(item.answer)}</span>
-      </div>`;
-    } else {
-      html += `<div style="margin:0 0 16px 0;padding:10px 12px;background:var(--bg);border-radius:8px;border-left:3px solid var(--border);color:var(--muted);font-size:13px">
-        💡 No answer recorded yet
-      </div>`;
-    }
-  }
-
-  // Updates / notes for any outcome type
   const updates = Array.isArray(item.updates) ? item.updates : [];
-  html += updates.map(u => `
+  let html = updates.map(u => `
     <div class="note">
       ${escapeHtml(u.text)}<br>
       <small>${new Date(u.ts).toLocaleString()}</small>
