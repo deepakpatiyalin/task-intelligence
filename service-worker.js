@@ -1,4 +1,4 @@
-const CACHE_NAME = "taskintel-v1";
+const CACHE_NAME = "taskintel-v3";
 
 const FILES_TO_CACHE = [
   "./",
@@ -25,7 +25,15 @@ self.addEventListener("activate", event => {
 });
 
 self.addEventListener("fetch", event => {
+  // Network first — always try to get the latest, fall back to cache only if offline
   event.respondWith(
-    caches.match(event.request).then(resp => resp || fetch(event.request))
+    fetch(event.request)
+      .then(response => {
+        // Update cache with fresh response
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
