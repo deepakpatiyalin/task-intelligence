@@ -3515,7 +3515,17 @@ function updateTaskDue(id, value){
   if (!t) return;
   t.due = value;
   saveDB();
-  render(); // ensures overdue highlighting updates
+  // Update overdue class on the row in-place
+  const row = document.querySelector(`tr[data-task-id="${id}"]`);
+  if (row) {
+    const overdue = isOverdue(t);
+    row.className = overdue ? "overdue" : t.status.toLowerCase().replace(" ", "-");
+    const badge = row.querySelector(".status-badge");
+    if (badge) {
+      badge.className = "status-badge " + (overdue ? "overdue-badge" : t.status.toLowerCase().replace(" ", "-"));
+      badge.textContent = overdue ? "⚠ Overdue" : t.status;
+    }
+  }
 }
 
 function deleteTask(id) {
@@ -3597,9 +3607,28 @@ function cycleTaskStatus(id){
   t.status = next;
   if (next === "Closed") {
     handleRecurringTask(t);
+    // recurring task adds a new row — need full render for that
+    if (t.recur && t.recur !== "none") { saveDB(); render(); return; }
   }
   saveDB();
-  render();
+
+  const row = document.querySelector(`tr[data-task-id="${id}"]`);
+  if (!row) { render(); return; }
+
+  if (next === "Closed" && filters.hideClosed) {
+    row.style.transition = "opacity 0.3s";
+    row.style.opacity = "0";
+    setTimeout(() => row.remove(), 310);
+    return;
+  }
+
+  const overdue = isOverdue(t);
+  row.className = overdue ? "overdue" : next.toLowerCase().replace(" ", "-");
+  const badge = row.querySelector(".status-badge");
+  if (badge) {
+    badge.className = "status-badge " + (overdue ? "overdue-badge" : next.toLowerCase().replace(" ", "-"));
+    badge.textContent = overdue ? "⚠ Overdue" : next;
+  }
 }
 
 function handleRecurringTask(t){
