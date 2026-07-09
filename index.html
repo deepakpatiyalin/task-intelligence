@@ -438,6 +438,88 @@ body.right-pane-open #content {
   padding: 6px 0;
 }
 
+/* ===== Weekly Summary ===== */
+.ws-wrap { max-width: 900px; }
+.ws-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+}
+.ws-btn-copy {
+  font-size: 12px; padding: 6px 14px; border-radius: 8px;
+  background: var(--accent); color: #fff; border: none; cursor: pointer;
+}
+.ws-btn-copy:hover { opacity: .85; }
+
+/* Health ring */
+.ws-health {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 18px; margin-bottom: 18px;
+}
+.ws-health-ring { position: relative; flex-shrink: 0; }
+.ws-health-score {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 14px; font-weight: 800;
+}
+
+/* Stat cards */
+.ws-stats {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 10px; margin-bottom: 22px;
+}
+.ws-stat {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 10px; text-align: center;
+}
+.ws-stat-icon { font-size: 18px; margin-bottom: 4px; }
+.ws-stat-value { font-size: 22px; font-weight: 800; line-height: 1; }
+.ws-stat-label { font-size: 10px; color: var(--muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .04em; }
+.ws-stat-sub { font-size: 10px; margin-top: 4px; }
+
+/* Two-column layout */
+.ws-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 680px) { .ws-cols { grid-template-columns: 1fr; } }
+.ws-col { min-width: 0; }
+
+/* Section header */
+.ws-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); margin: 16px 0 6px;
+}
+.ws-section-head:first-child { margin-top: 0; }
+.ws-count {
+  background: var(--border); color: var(--muted);
+  border-radius: 99px; padding: 1px 8px; font-size: 11px; font-weight: 700;
+}
+
+/* Rows inside sections */
+.ws-section {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+}
+.ws-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.ws-row:last-child { border-bottom: none; }
+.ws-row-body { flex: 1; min-width: 0; }
+.ws-row-title {
+  display: block; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ws-row-meta { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+.ws-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.ws-row-actions button.icon {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 6px; font-size: 12px; background: var(--bg);
+  cursor: pointer; color: var(--fg);
+}
+.ws-row-actions button.icon:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+.ws-empty { padding: 10px; color: var(--muted); font-size: 12px; font-style: italic; }
+.ws-more { padding: 6px 10px; color: var(--muted); font-size: 11px; font-style: italic; border-top: 1px solid var(--border); }
+
 /* ===== Outcome Toggle Switch ===== */
 .toggle {
   position: relative;
@@ -2881,95 +2963,253 @@ function addUpdate(){
 
 function renderWeeklySummary(){
   const now = new Date();
-  const weekAgo = new Date();
-  weekAgo.setDate(now.getDate() - 7);
+  const todayMidnight = new Date(now); todayMidnight.setHours(0,0,0,0);
+  const weekAgo = new Date(now); weekAgo.setDate(now.getDate() - 7);
+  const prevWeekAgo = new Date(now); prevWeekAgo.setDate(now.getDate() - 14);
 
-  const isThisWeek = d => {
-    if (!d) return false;
-    return new Date(d) >= weekAgo;
-  };
+  const inWindow = (d, from, to) => { if (!d) return false; const t = new Date(d); return t >= from && t < to; };
+  const thisWeek = d => inWindow(d, weekAgo, new Date(now.getTime() + 86400000));
+  const lastWeek = d => inWindow(d, prevWeekAgo, weekAgo);
 
-  // Decisions this week
-  const decisions = [];
+  // --- Tasks ---
+  const allOpen = db.tasks.filter(t => t.status !== "Closed");
+  const closedThisWeek = db.tasks.filter(t => t.status === "Closed" && thisWeek(t.updated || t.created));
+  const closedLastWeek = db.tasks.filter(t => t.status === "Closed" && lastWeek(t.updated || t.created));
+  const overdueTasks = allOpen.filter(t => t.due && new Date(t.due) < todayMidnight).sort((a,b) => new Date(a.due)-new Date(b.due));
+  const newTasks = db.tasks.filter(t => thisWeek(t.created));
+  const inProgressTasks = allOpen.filter(t => t.status === "In-Progress");
+  const velocity = closedLastWeek.length > 0
+    ? Math.round(((closedThisWeek.length - closedLastWeek.length) / closedLastWeek.length) * 100)
+    : null;
+
+  // --- Meetings ---
+  const meetingsThisWeek = db.meetings.filter(m => thisWeek(m.date || m.created));
+
+  // --- Outcomes ---
+  const decisions = [], openQuestions = [], answeredQs = [], newRisks = [];
   db.meetings.forEach(m => {
-    (m.decisions || []).forEach(d => {
-      if (isThisWeek(d.ts)) {
-        decisions.push({
-          meeting: m.name,
-          text: d.text,
-          ts: d.ts
-        });
-      }
-    });
-  });
-
-  // Tasks completed this week
-  const completedTasks = db.tasks.filter(t =>
-    t.status === "Closed" && isThisWeek(t.updated || t.created)
-  );
-
-  // Open questions
-  const openQuestions = [];
-  db.meetings.forEach(m => {
+    (m.decisions || []).forEach(d => { if (thisWeek(d.ts)) decisions.push({ meeting: m.name, text: d.text }); });
     (m.questions || []).forEach(q => {
-      if (!q.read) {
-        openQuestions.push({
-          meeting: m.name,
-          text: q.text
-        });
-      }
+      if (!q.resolved) openQuestions.push({ meeting: m.name, q });
+      else if (thisWeek(q.ts)) answeredQs.push({ meeting: m.name, q });
     });
+    (m.risks || []).forEach(r => { if (thisWeek(r.ts)) newRisks.push({ meeting: m.name, text: r.text }); });
   });
 
-  // Overdue tasks
-  const overdueTasks = db.tasks.filter(t =>
-    t.status !== "Closed" &&
-    t.due &&
-    new Date(t.due) < new Date().setHours(0,0,0,0)
-  );
+  // --- Health score ---
+  let score = 100;
+  if (overdueTasks.length > 0) score -= Math.min(40, overdueTasks.length * 8);
+  if (openQuestions.length > 5) score -= Math.min(20, (openQuestions.length - 5) * 4);
+  if (newRisks.length > 0) score -= Math.min(20, newRisks.length * 5);
+  score = Math.max(0, score);
+  const scoreColor = score >= 75 ? "#16a34a" : score >= 50 ? "#d97706" : "#dc2626";
+  const scoreLabel = score >= 75 ? "On Track" : score >= 50 ? "Needs Attention" : "At Risk";
 
-  // Render
+  const trendBadge = velocity === null ? "" :
+    velocity > 0 ? `<span style="color:#16a34a;font-size:11px">▲ ${velocity}% vs last week</span>` :
+    velocity < 0 ? `<span style="color:#dc2626;font-size:11px">▼ ${Math.abs(velocity)}% vs last week</span>` :
+    `<span style="color:var(--muted);font-size:11px">→ same as last week</span>`;
+
+  const statCard = (icon, value, label, sub="", color="") => `
+    <div class="ws-stat">
+      <div class="ws-stat-icon">${icon}</div>
+      <div class="ws-stat-value" style="${color ? `color:${color}` : ""}">${value}</div>
+      <div class="ws-stat-label">${label}</div>
+      ${sub ? `<div class="ws-stat-sub">${sub}</div>` : ""}
+    </div>`;
+
+  const sectionHeader = (icon, title, count, color="") => `
+    <div class="ws-section-head">
+      <span>${icon} ${title}</span>
+      ${count !== undefined ? `<span class="ws-count" style="${color?`background:${color}20;color:${color}`:"}">${count}</span>` : ""}
+    </div>`;
+
+  const taskRow = (t, showDue=true) => `
+    <div class="ws-row">
+      <div class="ws-row-body">
+        <span class="ws-row-title">${escapeHtml(t.title)}</span>
+        <span class="ws-row-meta">${escapeHtml(t.origin)}${showDue && t.due ? ` · Due ${t.due}` : ""}</span>
+      </div>
+      <div class="ws-row-actions">
+        ${t.status!=="Closed"?`<button class="icon" title="Close" onclick="quickCloseTask('${t.id}');renderWeeklySummary()">✔</button>`:""}
+        <button class="icon" title="Open" onclick="openTaskPane('${t.id}')">↗</button>
+      </div>
+    </div>`;
+
+  const questionRow = (u) => `
+    <div class="ws-row">
+      <div class="ws-row-body">
+        <span class="ws-row-title">${escapeHtml(u.q.text)}</span>
+        <span class="ws-row-meta">${escapeHtml(u.meeting)}</span>
+      </div>
+      <div class="ws-row-actions">
+        <button class="icon" title="Mark answered" onclick="markResolved('${escapeHtml(u.meeting)}','question','${u.q.id}');renderWeeklySummary()">✔</button>
+        <button class="icon" title="Open" onclick="openMeetingOutcomes('${escapeHtml(u.meeting)}')">↗</button>
+      </div>
+    </div>`;
+
   content.innerHTML = `
-    <h2>🧾 Weekly Summary</h2>
-    <small>Last 7 days</small>
+    <div class="ws-wrap">
+      <!-- Header -->
+      <div class="ws-header">
+        <div>
+          <h2 style="margin:0;font-size:18px">🧾 Weekly Summary</h2>
+          <div style="color:var(--muted);font-size:12px;margin-top:2px">${weekAgo.toLocaleDateString()} – ${now.toLocaleDateString()}</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="ws-btn-copy" onclick="copyWeeklyDigest()">📋 Copy Digest</button>
+        </div>
+      </div>
 
-    <h3>📌 Decisions Made</h3>
-    ${decisions.length
-      ? `<ul>${decisions.map(d =>
-          `<li><b>${d.meeting}:</b> ${d.text}</li>`
-        ).join("")}</ul>`
-      : `<em>No decisions recorded</em>`}
+      <!-- Health Score -->
+      <div class="ws-health">
+        <div class="ws-health-ring" style="--score:${score};--sc:${scoreColor}">
+          <svg viewBox="0 0 44 44" width="64" height="64">
+            <circle cx="22" cy="22" r="18" fill="none" stroke="var(--border)" stroke-width="4"/>
+            <circle cx="22" cy="22" r="18" fill="none" stroke="${scoreColor}" stroke-width="4"
+              stroke-dasharray="${Math.round(score * 1.131)} 113.1"
+              stroke-linecap="round" transform="rotate(-90 22 22)"/>
+          </svg>
+          <div class="ws-health-score" style="color:${scoreColor}">${score}</div>
+        </div>
+        <div>
+          <div style="font-weight:700;font-size:15px;color:${scoreColor}">${scoreLabel}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">Week health score</div>
+          ${overdueTasks.length ? `<div style="font-size:11px;color:#dc2626;margin-top:4px">⚠ ${overdueTasks.length} overdue task${overdueTasks.length>1?"s":""}</div>` : ""}
+          ${newRisks.length ? `<div style="font-size:11px;color:#d97706;margin-top:2px">⚠ ${newRisks.length} new risk${newRisks.length>1?"s":""}</div>` : ""}
+        </div>
+      </div>
 
-    <h3>📋 Tasks Completed</h3>
-    ${completedTasks.length
-      ? `<ul>${completedTasks.map(t =>
-          `<li>${t.title} <small>(${t.origin})</small></li>`
-        ).join("")}</ul>`
-      : `<em>No tasks completed</em>`}
+      <!-- Stats Row -->
+      <div class="ws-stats">
+        ${statCard("✅", closedThisWeek.length, "Closed", trendBadge, closedThisWeek.length > 0 ? "#16a34a" : "")}
+        ${statCard("🆕", newTasks.length, "Created this week", "", "")}
+        ${statCard("▶", inProgressTasks.length, "In Progress", "", "")}
+        ${statCard("🔴", overdueTasks.length, "Overdue", "", overdueTasks.length > 0 ? "#dc2626" : "")}
+        ${statCard("📅", meetingsThisWeek.length, "Meetings", "", "")}
+        ${statCard("❓", openQuestions.length, "Open Questions", "", openQuestions.length > 0 ? "#7c3aed" : "")}
+      </div>
 
-    <h3>❓ Open Questions</h3>
-    ${openQuestions.length
-      ? `<ul>${openQuestions.map(q =>
-          `<li><b>${q.meeting}:</b> ${q.text}</li>`
-        ).join("")}</ul>`
-      : `<em>No open questions 🎉</em>`}
+      <!-- Two-column layout -->
+      <div class="ws-cols">
+        <!-- Left col: Actions needed -->
+        <div class="ws-col">
 
-    <h3>🔴 Risks / Overdue Tasks</h3>
-    ${overdueTasks.length
-      ? `<ul>${overdueTasks.map(t =>
-          `<li>${t.title} <small>(Due ${t.due})</small></li>`
-        ).join("")}</ul>`
-      : `<em>No overdue tasks</em>`}
+          ${sectionHeader("🔴", "Overdue Tasks", overdueTasks.length, "#dc2626")}
+          <div class="ws-section">
+            ${overdueTasks.length
+              ? overdueTasks.slice(0,8).map(t => taskRow(t)).join("")
+              : `<div class="ws-empty">No overdue tasks 🎉</div>`}
+            ${overdueTasks.length > 8 ? `<div class="ws-more">+${overdueTasks.length-8} more</div>` : ""}
+          </div>
 
-    <button onclick="copyWeeklySummary()">📋 Copy Summary</button>
+          ${sectionHeader("❓", "Open Questions", openQuestions.length, "#7c3aed")}
+          <div class="ws-section">
+            ${openQuestions.length
+              ? openQuestions.slice(0,6).map(u => questionRow(u)).join("")
+              : `<div class="ws-empty">No open questions 🎉</div>`}
+            ${openQuestions.length > 6 ? `<div class="ws-more">+${openQuestions.length-6} more</div>` : ""}
+          </div>
+
+          ${newRisks.length ? `
+            ${sectionHeader("⚠️", "New Risks This Week", newRisks.length, "#d97706")}
+            <div class="ws-section">
+              ${newRisks.map(r => `
+                <div class="ws-row">
+                  <div class="ws-row-body">
+                    <span class="ws-row-title">${escapeHtml(r.text)}</span>
+                    <span class="ws-row-meta">${escapeHtml(r.meeting)}</span>
+                  </div>
+                </div>`).join("")}
+            </div>` : ""}
+
+        </div>
+
+        <!-- Right col: This week's progress -->
+        <div class="ws-col">
+
+          ${sectionHeader("✅", "Completed This Week", closedThisWeek.length, "#16a34a")}
+          <div class="ws-section">
+            ${closedThisWeek.length
+              ? closedThisWeek.slice(0,8).map(t => taskRow(t, false)).join("")
+              : `<div class="ws-empty">No tasks closed yet</div>`}
+            ${closedThisWeek.length > 8 ? `<div class="ws-more">+${closedThisWeek.length-8} more</div>` : ""}
+          </div>
+
+          ${sectionHeader("📌", "Decisions Made", decisions.length)}
+          <div class="ws-section">
+            ${decisions.length
+              ? decisions.map(d => `
+                <div class="ws-row">
+                  <div class="ws-row-body">
+                    <span class="ws-row-title">${escapeHtml(d.text)}</span>
+                    <span class="ws-row-meta">${escapeHtml(d.meeting)}</span>
+                  </div>
+                </div>`).join("")
+              : `<div class="ws-empty">No decisions logged</div>`}
+          </div>
+
+          ${meetingsThisWeek.length ? `
+            ${sectionHeader("📅", "Meetings This Week", meetingsThisWeek.length)}
+            <div class="ws-section">
+              ${meetingsThisWeek.map(m => `
+                <div class="ws-row">
+                  <div class="ws-row-body">
+                    <span class="ws-row-title">${escapeHtml(m.name)}</span>
+                    <span class="ws-row-meta">${m.date || ""}</span>
+                  </div>
+                  <div class="ws-row-actions">
+                    <button class="icon" onclick="openMeetingOutcomes('${escapeHtml(m.name)}')">↗</button>
+                  </div>
+                </div>`).join("")}
+            </div>` : ""}
+
+        </div>
+      </div>
+    </div>
   `;
 }
 
-function copyWeeklySummary(){
-  const text = content.innerText;
-  navigator.clipboard.writeText(text);
-  notify("Weekly summary copied to clipboard", "success", 7000);
+function copyWeeklyDigest(){
+  const now = new Date();
+  const weekAgo = new Date(); weekAgo.setDate(now.getDate()-7);
+  const todayMidnight = new Date(now); todayMidnight.setHours(0,0,0,0);
+  const thisWeek = d => { if(!d) return false; const t=new Date(d); return t>=weekAgo; };
+
+  const closedThisWeek = db.tasks.filter(t => t.status==="Closed" && thisWeek(t.updated||t.created));
+  const overdueTasks = db.tasks.filter(t => t.status!=="Closed" && t.due && new Date(t.due)<todayMidnight);
+  const openQuestions = [];
+  const decisions = [];
+  db.meetings.forEach(m => {
+    (m.questions||[]).forEach(q => { if(!q.resolved) openQuestions.push({meeting:m.name, text:q.text}); });
+    (m.decisions||[]).forEach(d => { if(thisWeek(d.ts)) decisions.push({meeting:m.name, text:d.text}); });
+  });
+
+  let lines = [
+    `Weekly Summary — ${weekAgo.toLocaleDateString()} to ${now.toLocaleDateString()}`,
+    "=".repeat(55), ""
+  ];
+  lines.push(`✅ COMPLETED (${closedThisWeek.length})`);
+  closedThisWeek.forEach(t => lines.push(`  • ${t.title} [${t.origin}]`));
+  if (!closedThisWeek.length) lines.push("  None");
+  lines.push("");
+  lines.push(`📌 DECISIONS (${decisions.length})`);
+  decisions.forEach(d => lines.push(`  • [${d.meeting}] ${d.text}`));
+  if (!decisions.length) lines.push("  None");
+  lines.push("");
+  lines.push(`❓ OPEN QUESTIONS (${openQuestions.length})`);
+  openQuestions.slice(0,8).forEach(q => lines.push(`  • [${q.meeting}] ${q.text}`));
+  if (!openQuestions.length) lines.push("  None");
+  lines.push("");
+  lines.push(`🔴 OVERDUE (${overdueTasks.length})`);
+  overdueTasks.slice(0,8).forEach(t => lines.push(`  • ${t.title} — Due ${t.due}`));
+  if (!overdueTasks.length) lines.push("  None");
+
+  navigator.clipboard.writeText(lines.join("\n"));
+  notify("Digest copied to clipboard", "success", 2500);
 }
+
+function copyWeeklySummary(){ copyWeeklyDigest(); }
 
 /* ================= ADMIN ================= */
 	function normalizeMeetings(){
