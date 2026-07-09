@@ -3010,31 +3010,35 @@ function renderWeeklySummary(){
     velocity < 0 ? `<span style="color:#dc2626;font-size:11px">▼ ${Math.abs(velocity)}% vs last week</span>` :
     `<span style="color:var(--muted);font-size:11px">→ same as last week</span>`;
 
-  const statCard = (icon, value, label, sub="", color="") => `
-    <div class="ws-stat">
-      <div class="ws-stat-icon">${icon}</div>
-      <div class="ws-stat-value" style="${color ? `color:${color}` : ""}">${value}</div>
-      <div class="ws-stat-label">${label}</div>
-      ${sub ? `<div class="ws-stat-sub">${sub}</div>` : ""}
-    </div>`;
+  const statCard = (icon, value, label, sub, color) => {
+    const valStyle = color ? ' style="color:' + color + '"' : "";
+    const subHtml = sub ? '<div class="ws-stat-sub">' + sub + "</div>" : "";
+    return '<div class="ws-stat">'
+      + '<div class="ws-stat-icon">' + icon + "</div>"
+      + '<div class="ws-stat-value"' + valStyle + ">" + value + "</div>"
+      + '<div class="ws-stat-label">' + label + "</div>"
+      + subHtml + "</div>";
+  };
 
-  const sectionHeader = (icon, title, count, color="") => `
-    <div class="ws-section-head">
-      <span>${icon} ${title}</span>
-      ${count !== undefined ? `<span class="ws-count" style="${color?`background:${color}20;color:${color}`:"}">${count}</span>` : ""}
-    </div>`;
+  const sectionHeader = (icon, title, count, color) => {
+    const countStyle = color ? ' style="background:' + color + '20;color:' + color + '"' : "";
+    const countBadge = count !== undefined
+      ? '<span class="ws-count"' + countStyle + ">" + count + "</span>" : "";
+    return '<div class="ws-section-head"><span>' + icon + " " + title + "</span>" + countBadge + "</div>";
+  };
 
-  const taskRow = (t, showDue=true) => `
-    <div class="ws-row">
-      <div class="ws-row-body">
-        <span class="ws-row-title">${escapeHtml(t.title)}</span>
-        <span class="ws-row-meta">${escapeHtml(t.origin)}${showDue && t.due ? ` · Due ${t.due}` : ""}</span>
-      </div>
-      <div class="ws-row-actions">
-        ${t.status!=="Closed"?`<button class="icon" title="Close" onclick="quickCloseTask('${t.id}');renderWeeklySummary()">✔</button>`:""}
-        <button class="icon" title="Open" onclick="openTaskPane('${t.id}')">↗</button>
-      </div>
-    </div>`;
+  const taskRow = (t, showDue) => {
+    const meta = escapeHtml(t.origin) + (showDue !== false && t.due ? " · Due " + t.due : "");
+    const closeBtn = t.status !== "Closed"
+      ? '<button class="icon" title="Close" onclick="quickCloseTask(\'' + t.id + '\');renderWeeklySummary()">✔</button>' : "";
+    return '<div class="ws-row"><div class="ws-row-body">'
+      + '<span class="ws-row-title">' + escapeHtml(t.title) + "</span>"
+      + '<span class="ws-row-meta">' + meta + "</span>"
+      + '</div><div class="ws-row-actions">'
+      + closeBtn
+      + '<button class="icon" title="Open" onclick="openTaskPane(\'' + t.id + '\')">↗</button>'
+      + "</div></div>";
+  };
 
   const questionRow = (u) => `
     <div class="ws-row">
