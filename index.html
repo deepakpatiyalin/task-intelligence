@@ -801,10 +801,13 @@ body.locked #lockScreen {
 }
 
 .lock-box {
-  background: var(--card);
-  padding: 24px;
-  border-radius: 12px;
-  text-align:center;
+  background: #171a21;
+  color: #fff;
+  padding: 32px 28px;
+  border-radius: 14px;
+  text-align: center;
+  width: 320px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
 }
 .oneonone-grid{
   display:grid;
@@ -1453,9 +1456,13 @@ td[contenteditable]:focus {
     <h3 id="transcriptTitle"></h3>
     <textarea id="transcriptText" style="width:100%;min-height:220px"></textarea>
     <br><br>
-    <button id="btnGenPrompt">🤖 Generate AI Prompt</button>
-    <button id="btnSaveTranscript">Save Transcript</button>
-    <button class="secondary" id="btnCloseTranscript">Close</button>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button id="btnAnalyzeClaude" style="background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border:none;display:none">✨ Analyze with Claude</button>
+      <button id="btnGenPrompt">🤖 Manual AI Prompt</button>
+      <button id="btnSaveTranscript">Save Transcript</button>
+      <button class="secondary" id="btnCloseTranscript">Close</button>
+    </div>
+    <div id="claudeAnalyzeStatus" style="margin-top:10px;font-size:13px;color:var(--muted);display:none"></div>
   </div>
 </div>
 
@@ -1563,11 +1570,9 @@ td[contenteditable]:focus {
 /* ===== APP LOCK ===== */
 const LOCK_KEY = "appLocked";
 const PWD_KEY  = "appPwdHash";
+const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
 
-const INACTIVITY_MINUTES = 10;
-const LOCK_TIMEOUT_MINUTES = 10;
 let inactivityTimer;
-let lastActivity = Date.now();
 let meetingSearchText = "";
 let showArchivedMeetings = false;
 
@@ -1578,21 +1583,17 @@ function getLockError(){ return document.getElementById("lockError"); }
 function hasPassword(){ return !!localStorage.getItem(PWD_KEY); }
 function isLocked(){ return localStorage.getItem(LOCK_KEY) === "1"; }
 
-["click","keydown","mousemove","touchstart"].forEach(evt =>
+["click","keydown","mousemove","touchstart","scroll"].forEach(evt =>
   document.addEventListener(evt, resetInactivityTimer, { passive:true })
 );
 
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden && hasPassword()) lockApp();
-});
-
 function resetInactivityTimer(){
   clearTimeout(inactivityTimer);
-  if (!hasPassword()) return;
+  if (!hasPassword() || isLocked()) return;
   inactivityTimer = setTimeout(() => {
     lockApp();
-    notify("App locked due to inactivity", "warn", 5000);
-  }, INACTIVITY_MINUTES * 60 * 1000);
+    notify("App locked due to inactivity", "warn", 4000);
+  }, INACTIVITY_MS);
 }
 
 function bytesToHex(buf){
@@ -1628,16 +1629,14 @@ async function hash(text, saltHex){
   return { salt: bytesToHex(salt), hash: bytesToHex(bits) };
 }
 
-async function handleSetPassword(){
-  const pwd = prompt("Enter a new password:");
-  if (!pwd) return;
-  const confirmPwd = prompt("Confirm new password:");
-  if (pwd !== confirmPwd){
-    notify("Passwords do not match", "error", 4000);
-    return;
-  }
-  await setPassword(pwd);
-  notify("Password set", "success", 4000);
+function handleSetPassword(){
+  document.getElementById("pwdModalMode").value = "set";
+  document.getElementById("pwdModalTitle").textContent = "🔑 Set Password";
+  document.getElementById("pwdNew").value = "";
+  document.getElementById("pwdConfirm").value = "";
+  document.getElementById("pwdModalError").textContent = "";
+  document.getElementById("pwdModal").style.display = "flex";
+  setTimeout(() => document.getElementById("pwdNew").focus(), 50);
 }
 
 async function promptUnlock(){
@@ -1683,11 +1682,50 @@ async function promptUnlock(){
 }
 
 function handleRemovePassword(){
-  if (!confirm("Remove password?")) return;
-  localStorage.removeItem(PWD_KEY);
-  localStorage.removeItem(LOCK_KEY);
-  unlockApp();
-  notify("Password removed", "success", 4000);
+  document.getElementById("pwdModalMode").value = "remove";
+  document.getElementById("pwdModalTitle").textContent = "🗑 Remove Password";
+  document.getElementById("pwdNew").value = "";
+  document.getElementById("pwdConfirm").value = "";
+  document.getElementById("pwdModalError").textContent = "";
+  document.getElementById("pwdModal").style.display = "flex";
+  setTimeout(() => document.getElementById("pwdNew").focus(), 50);
+}
+
+async function submitPwdModal(){
+  const mode = document.getElementById("pwdModalMode").value;
+  const p1 = document.getElementById("pwdNew").value;
+  const p2 = document.getElementById("pwdConfirm").value;
+  const errEl = document.getElementById("pwdModalError");
+
+  if (mode === "set") {
+    if (!p1) { errEl.textContent = "Password cannot be empty"; return; }
+    if (p1 !== p2) { errEl.textContent = "Passwords do not match"; return; }
+    await setPassword(p1);
+    closePwdModal();
+    notify("Password set ✓", "success", 4000);
+    resetInactivityTimer();
+  } else {
+    // verify current password before removing
+    const stored = localStorage.getItem(PWD_KEY);
+    if (stored) {
+      let storedObj; try { storedObj = JSON.parse(stored); } catch { storedObj = null; }
+      let match = false;
+      if (storedObj && storedObj.salt) {
+        const { hash: h } = await hash(p1, storedObj.salt);
+        match = h === storedObj.hash;
+      }
+      if (!match) { errEl.textContent = "Incorrect current password"; return; }
+    }
+    localStorage.removeItem(PWD_KEY);
+    localStorage.removeItem(LOCK_KEY);
+    unlockApp();
+    closePwdModal();
+    notify("Password removed", "success", 4000);
+  }
+}
+
+function closePwdModal(){
+  document.getElementById("pwdModal").style.display = "none";
 }
 
 async function setPassword(pwd){
@@ -1717,19 +1755,7 @@ let activeOutcomeId = null;
 
 
 
-["click","mousemove","keydown"].forEach(evt => {
-  document.addEventListener(evt, () => {
-    lastActivity = Date.now();
-  });
-});
 
-setInterval(() => {
-  if (!hasPassword()) return;
-  if (isLocked()) return;
-  if (Date.now() - lastActivity > LOCK_TIMEOUT_MINUTES * 60 * 1000) {
-    lockApp();
-  }
-}, 30000);
 const expandedAnnouncements = {};
 const ANNOUNCEMENT_PREVIEW_LENGTH = 300;
 const aiModal = document.getElementById("aiModal");
@@ -3227,6 +3253,23 @@ console.log("renderAdmin v2 (with search + archive)");
 
         <button onclick="addMeeting()">＋ Add Meeting</button>
       </div>
+    </div>
+
+    <div style="margin-bottom:24px;padding:16px;background:var(--card);border-radius:10px;border:1px solid var(--border)">
+      <h3 style="margin:0 0 12px;font-size:14px">🤖 Claude AI Integration</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="password" id="claudeApiKeyInput"
+          placeholder="sk-ant-api03-…"
+          value="${localStorage.getItem('claudeApiKey') || ''}"
+          style="flex:1;min-width:260px;font-family:monospace;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg)">
+        <button onclick="saveClaudeApiKey()">Save Key</button>
+        <button class="secondary" onclick="clearClaudeApiKey()">Remove</button>
+      </div>
+      <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">
+        Key is stored only in your browser (localStorage). Get one at
+        <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a>.
+        Once saved, transcripts are analyzed automatically — no copy-paste needed.
+      </p>
     </div>
 
     <div class="meeting-list">
@@ -5215,6 +5258,8 @@ btnCloseTranscript.onclick = closeTranscript;
 btnSaveTranscript.onclick  = saveTranscript;
 btnGenPrompt.onclick       = generateAIPrompt;
 btnParseAI.onclick         = parseAIReview;
+document.getElementById("btnAnalyzeClaude").onclick = analyzeWithClaude;
+updateAnalyzeButton();
 
 
 function hideGenPrompt(){
@@ -5230,10 +5275,10 @@ function showGenPrompt(){
 }
 
 function openTranscript(name){
-notify("Open Transcript", "success",7000);
   reviewMeeting(name);
   activeTranscriptMeeting = db.meetings.find(m=>m.name===name);
   transcriptTitle.textContent = `Transcript – ${name}`;
+  updateAnalyzeButton();
   transcriptText.value = activeTranscriptMeeting.transcript || "";
   transcriptModal.style.display = "flex";
 }
@@ -5247,6 +5292,91 @@ function reviewMeeting(meetingName){
     return;
   }
   activeReviewMeeting = m;
+}
+
+function saveClaudeApiKey(){
+  const key = (document.getElementById("claudeApiKeyInput") || {}).value || "";
+  if (!key.startsWith("sk-ant-")) {
+    notify("That doesn\'t look like a Claude API key (should start with sk-ant-)", "warn", 6000);
+    return;
+  }
+  localStorage.setItem("claudeApiKey", key.trim());
+  notify("API key saved \u2713 \u2014 \'Analyze with Claude\' button will appear on transcripts", "success", 5000);
+  updateAnalyzeButton();
+}
+
+function clearClaudeApiKey(){
+  localStorage.removeItem("claudeApiKey");
+  notify("API key removed", "info", 3000);
+  updateAnalyzeButton();
+}
+
+function updateAnalyzeButton(){
+  const btn = document.getElementById("btnAnalyzeClaude");
+  if (!btn) return;
+  btn.style.display = localStorage.getItem("claudeApiKey") ? "inline-block" : "none";
+}
+
+async function analyzeWithClaude(){
+  const apiKey = localStorage.getItem("claudeApiKey");
+  if (!apiKey) { notify("No API key set \u2014 go to Manage Meetings to add one", "warn", 6000); return; }
+
+  updateTranscript();
+  const transcript = transcriptText.value.trim();
+  if (!transcript) { notify("Transcript is empty", "error", 5000); return; }
+
+  activeReviewMeeting = activeTranscriptMeeting;
+
+  const btn = document.getElementById("btnAnalyzeClaude");
+  const status = document.getElementById("claudeAnalyzeStatus");
+  btn.disabled = true;
+  btn.textContent = "\u23f3 Analyzing\u2026";
+  status.style.display = "block";
+  status.textContent = "Sending to Claude AI\u2026";
+
+  const hasGeminiStructure = /\bNext steps\b/i.test(transcript) && /\bDecisions\b/i.test(transcript);
+  const prompt = hasGeminiStructure ? buildGeminiPrompt(transcript) : buildRawPrompt(transcript);
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-allow-browser": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || "API error " + res.status);
+    }
+
+    const json = await res.json();
+    const rawText = json.content?.[0]?.text || "";
+    status.textContent = "Parsing response\u2026";
+
+    const dateEl = document.getElementById("aiMeetingDate");
+    if (dateEl && !dateEl.value) dateEl.value = new Date().toISOString().slice(0, 10);
+
+    aiText.value = rawText;
+    transcriptModal.style.display = "none";
+    parseAIReview();
+
+  } catch (err) {
+    notify("Claude API error: " + err.message, "error", 10000);
+    console.error("Claude API error:", err);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "\u2728 Analyze with Claude";
+    status.style.display = "none";
+  }
 }
 
 function generateAIPrompt(){
@@ -6441,1893 +6571,47 @@ function addOutcomeUpdate(){
   notify("Note added", "success", 2000);
 }
 
-if (hasPassword() && isLocked()) {
-  lockApp();
-}
-
-document.addEventListener("DOMContentLoaded", async () => {
+// On every page load: if password is set, always lock first
+document.addEventListener("DOMContentLoaded", () => {
   if (hasPassword()) {
-    lockApp();          // 🔒 force lock
-    await promptUnlock(); // 🔑 ask password
+    lockApp();
   } else {
-    unlockApp();        // no password → free access
+    unlockApp();
   }
 });
 </script>
 <!-- ===== APP LOCK SCREEN ===== -->
-<div id="lockScreen" style="
-  position:fixed;
-  inset:0;
-  background:#0f1115;
-  color:#fff;
-  align-items:center;
-  justify-content:center;
-  z-index:99999;
-">
-  <div style="background:#171a21;padding:24px;border-radius:12px;width:320px">
-    <h3>🔒 Locked</h3>
-    <p style="color:#9aa1ac">Enter password to continue</p>
-    <input id="lockPassword" type="password" style="width:100%;padding:8px"
+<div id="lockScreen">
+  <div class="lock-box">
+    <div style="font-size:40px;margin-bottom:8px">🔒</div>
+    <h3 style="margin:0 0 6px">Task Intelligence</h3>
+    <p style="color:#9aa1ac;font-size:13px;margin:0 0 16px">Enter your password to continue</p>
+    <input id="lockPassword" type="password" placeholder="Password"
+      style="width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#0f1115;color:#fff;font-size:14px;box-sizing:border-box"
       onkeydown="if(event.key==='Enter')promptUnlock()">
-    <button style="margin-top:12px;width:100%" onclick="promptUnlock()">Unlock</button>
-    <p id="lockError" style="color:#dc2626;font-size:12px"></p>
+    <button style="margin-top:10px;width:100%;padding:10px" onclick="promptUnlock()">Unlock</button>
+    <p id="lockError" style="color:#dc2626;font-size:12px;margin:8px 0 0;min-height:18px"></p>
   </div>
 </div>
 
-<!-- ===== Global Search Overlay ===== -->
-<div id="searchOverlay" onclick="if(event.target===this)closeSearch()">
-  <div class="search-box">
-    <input id="globalSearchInput" placeholder="Search tasks, meetings, outcomes, 1-1s, announcements…"
-      oninput="renderSearchResults(this.value)">
-    <div class="search-results" id="searchResults"></div>
-  </div>
-</div>
-
-<!-- ===== Bulk Action Bar ===== -->
-<div id="bulkBar">
-  <span class="bulk-count" id="bulkCount">0 selected</span>
-  <button onclick="bulkClose()">Close Selected</button>
-  <button class="danger" onclick="bulkDelete()">Delete Selected</button>
-  <button class="secondary" onclick="bulkPostpone()">Postpone +3 days</button>
-</div>
-
-<!-- ===== Notification Stack ===== -->
-<div id="toastContainer"></div>
-<script>
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js");
-}
-</script>
-</body>
-</html>
-  ${trendIcons.join(" → ")}
-
-  <br><br>
-
-  <button onclick="openOneOnOne('${r.id}')">
-  Back
-  </button>
-
-  `;
-
-  content.innerHTML = html;
-
-}
-
-function generateAISummary(rId, sId){
-
-  const r = db.oneOnOnes.reportees.find(x=>x.id===rId);
-  const s = r.sessions.find(x=>x.id===sId);
-
-  if(!s) return;
-
-  const wins = (s.wins || []).join(", ");
-  const challenges = (s.challenges || []).join(", ");
-  const notes = (s.notes || []).join(", ");
-
-  const delivery = s.signals?.delivery || "unknown";
-
-  let deliveryText = "stable";
-
-  if(delivery === "watch") deliveryText = "showing some delivery pressure";
-  if(delivery === "risk") deliveryText = "at delivery risk";
-
-  const summary = `
-
-Summary
-
-${r.name} discussed progress during the session.
-
-Wins
-${wins || "No major wins recorded."}
-
-Challenges
-${challenges || "No major challenges recorded."}
-
-Notes
-${notes || "No discussion notes recorded."}
-
-Performance Insight
-Delivery appears ${deliveryText}.
-
-Suggested Focus
-Review open actions and address blockers in the next meeting.
-
-`;
-
-  content.innerHTML = `
-
-<h2>AI Meeting Summary</h2>
-
-<pre style="white-space:pre-wrap">${summary}</pre>
-
-<br>
-
-<button onclick="openSession('${r.id}','${s.id}')">
-Back to Session
-</button>
-
-`;
-
-}
-
-/*
-function toggleSession(oneId, sessionId){
-  const el = document.getElementById("session-" + sessionId);
-  if (el) el.classList.toggle("hidden");
-}
-function addAgenda(oneId, sessionId){
-  const o = db.oneOnOnes.find(x => x.id === oneId);
-  const s = o.sessions.find(x => x.id === sessionId);
-
-  s.agenda.push({
-    id: crypto.randomUUID(),
-    text: "New agenda item"
-  });
-
-  saveDB();
-  openOneOnOne(oneId);
-}
-function updateAgenda(oneId, sessionId, itemId, text){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  const item = s.agenda.find(x=>x.id===itemId);
-  item.text = text;
-  saveDB();
-}
-function deleteAgenda(oneId, sessionId, itemId){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  s.agenda = s.agenda.filter(x=>x.id!==itemId);
-  saveDB();
-  openOneOnOne(oneId);
-}
-function addNote(oneId, sessionId){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  s.notes.push({
-    id: crypto.randomUUID(),
-    text: "New note"
-  });
-
-  saveDB();
-  openOneOnOne(oneId);
-}
-function updateNote(oneId, sessionId, noteId, text){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  const n = s.notes.find(x=>x.id===noteId);
-  n.text = text;
-  saveDB();
-}
-function deleteNote(oneId, sessionId, noteId){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  s.notes = s.notes.filter(x=>x.id!==noteId);
-  saveDB();
-  openOneOnOne(oneId);
-}
-function addAction(oneId, sessionId){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  s.actions.push({
-    id: crypto.randomUUID(),
-    text: "New action",
-    status: "Open",
-    createdAt: new Date().toISOString()
-  });
-
-  saveDB();
-  openOneOnOne(oneId);
-}
-function updateAction(oneId, sessionId, actionId, text){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  const a = s.actions.find(x=>x.id===actionId);
-  a.text = text;
-  saveDB();
-}
-function toggleAction(oneId, sessionId, actionId){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  const a = s.actions.find(x=>x.id===actionId);
-  a.status = a.status === "Closed" ? "Open" : "Closed";
-  saveDB();
-}
-function deleteAction(oneId, sessionId, actionId){
-  const s = db.oneOnOnes.find(x=>x.id===oneId)
-    .sessions.find(x=>x.id===sessionId);
-
-  s.actions = s.actions.filter(x=>x.id!==actionId);
-  saveDB();
-  openOneOnOne(oneId);
-}
-function renderSignals(reporteeId, sessionId, signals){
-
-  const moodMap = {
-    positive: "🙂",
-    neutral: "😐",
-    low: "🙁"
-  };
-
-  const deliveryMap = {
-    ontrack: "🟢",
-    watch: "🟡",
-    risk: "🔴"
-  };
-
-  const growthMap = {
-    improving: "📈",
-    stable: "➡",
-    declining: "📉"
-  };
-
-  return `
-    <div class="signal-bar">
-
-      <div onclick="cycleSignal('${reporteeId}','${sessionId}','mood')">
-        ${moodMap[signals.mood]} Mood
-      </div>
-
-      <div onclick="cycleSignal('${reporteeId}','${sessionId}','delivery')">
-        ${deliveryMap[signals.delivery]} Delivery
-      </div>
-
-      <div onclick="toggleRisk('${reporteeId}','${sessionId}')">
-        ${signals.risk ? "⚠️ Risk" : "✓ No Risk"}
-      </div>
-
-      <div onclick="cycleSignal('${reporteeId}','${sessionId}','growth')">
-        ${growthMap[signals.growth]} Growth
-      </div>
-
+<!-- ===== PASSWORD MODAL ===== -->
+<div class="modal" id="pwdModal" style="display:none">
+  <div class="modal-content" style="max-width:380px">
+    <h3 id="pwdModalTitle">🔑 Set Password</h3>
+    <input type="hidden" id="pwdModalMode" value="set">
+    <label style="font-size:13px;display:block;margin-bottom:4px">New Password</label>
+    <input type="password" id="pwdNew" placeholder="Enter password"
+      style="width:100%;margin-bottom:12px"
+      onkeydown="if(event.key==='Enter')document.getElementById('pwdConfirm').focus()">
+    <label style="font-size:13px;display:block;margin-bottom:4px">Confirm Password</label>
+    <input type="password" id="pwdConfirm" placeholder="Re-enter password"
+      style="width:100%;margin-bottom:4px"
+      onkeydown="if(event.key==='Enter')submitPwdModal()">
+    <p id="pwdModalError" style="color:#dc2626;font-size:12px;min-height:18px;margin:4px 0 12px"></p>
+    <div style="display:flex;gap:8px">
+      <button onclick="submitPwdModal()">Confirm</button>
+      <button class="secondary" onclick="closePwdModal()">Cancel</button>
     </div>
-  `;
-}
-function cycleSignal(rId, sId, type){
-  const r = db.oneOnOnes.find(x=>x.id===rId);
-  const s = r.sessions.find(x=>x.id===sId);
-
-  const cycles = {
-    mood: ["positive","neutral","low"],
-    delivery: ["ontrack","watch","risk"],
-    growth: ["improving","stable","declining"]
-  };
-
-  const current = s.signals[type];
-  const list = cycles[type];
-  const next = list[(list.indexOf(current)+1)%list.length];
-
-  s.signals[type] = next;
-
-  saveDB();
-  openOneOnOne(rId);
-}
-function getActionAging(createdDate){
-
-  const created = new Date(createdDate);
-  const today = new Date();
-
-  const diffDays = Math.floor(
-    (today - created) / (1000*60*60*24)
-  );
-
-  if (diffDays <= 7) return { label:"Fresh", class:"fresh" };
-  if (diffDays <= 14) return { label:"Aging", class:"aging" };
-  return { label:"Stale", class:"stale" };
-}
-*/
-function toggleRisk(rId, sId){
-  const r = db.oneOnOnes.find(x=>x.id===rId);
-  const s = r.sessions.find(x=>x.id===sId);
-
-  s.signals.risk = !s.signals.risk;
-
-  saveDB();
-  openOneOnOne(rId);
-}
-/*=============== end 1-1 module=======================*/
-
-function renderTasksPreserveSearch(){
-  const input = document.getElementById("taskSearch");
-  const cursorPos = input ? input.selectionStart : null;
-
-  render();
-
-  // Restore focus + cursor
-  requestAnimationFrame(() => {
-    const newInput = document.getElementById("taskSearch");
-    if (newInput) {
-      newInput.focus();
-      if (cursorPos !== null) {
-        newInput.setSelectionRange(cursorPos, cursorPos);
-      }
-    }
-  });
-}
-function escapeHtml(str){
-  return String(str == null ? "" : str)
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#39;");
-}
-
-function safeUrl(u){
-  return (u||"").match(/^https?:\/\//) ? u : "#";
-}
-
-function summarizePoints(list){
-  if (!list.length) return "";
-
-  const cleaned = list
-    .map(t => t.replace(/[.。]\s*$/, "").trim())
-    .filter(Boolean);
-
-  return cleaned
-    .map((text, idx) => `${idx + 1}. ${text}.`)
-    .join("<br>");
-}
-
-function derivePosture(summary){
-  const d = summary.decisions.length;
-  const q = summary.questions.length;
-
-  if (d && !q) return "✅ Alignment achieved; no open issues.";
-  if (!d && q) return "⚠️ Discussion ongoing; clarity pending.";
-  if (d && q) return "🟡 Partial alignment; follow-ups required.";
-
-  return "ℹ️ Informational discussion.";
-}
-
-function toggleTimelineDetails(){
-  timelineDetailsOpen = !timelineDetailsOpen;
-  renderMeetingTimeline();
-}
-
-function renderMeetingTimeline(){
-  let aiSummaryHtml = "";
-  
-  const meetingName = view.value;
-/*  const m = db.meetings.find(x => x.name === meetingName); show archived meetings*/
-const m = db.meetings.find(x => x.name === meetingName && !x.archived);
-  if (!m) return;
-
-  if (m.aiTimelineSummary && m.aiTimelineSummary.text) {
-  aiSummaryHtml = `
-<div class="timeline-card ai-summary clickable"
-     onclick="toggleTimelineDetails()">
-      <div class="timeline-date">
-        🧠 AI Generated Summary
-        <span style="float:right;font-size:11px;opacity:.6">
-          ${new Date(m.aiTimelineSummary.ts).toLocaleDateString()}
-        </span>
-      </div>
-      <div class="timeline-summary">
-        ${escapeHtml(m.aiTimelineSummary.text)}
-      </div>
-    </div>
-  `;
-}
-
-  const byDate = {};
-
-  function bucket(ts){
-    const key = formatDateGroup(ts);
-    byDate[key] ||= { decisions: [], questions: [] };
-    return byDate[key];
-  }
-
-  // Collect everything
-  m.decisions.forEach(d => bucket(d.ts).decisions.push(d.text));
-  m.questions.forEach(q => bucket(q.ts).questions.push(q.text));
-
-  const dates = Object.keys(byDate);
-  
-
-  content.innerHTML = `
-    <h2>🧾 Timeline — ${m.name}</h2>
-           ${aiSummaryHtml}
-
-    ${dates.length === 0
-      ? `<em>No activity yet</em>`
-      : dates.map(date => {
-          const s = byDate[date];
-
-          const decisionSummary = summarizePoints(s.decisions);
-          const questionSummary = summarizePoints(s.questions);
-
-          return `
-            <div class="timeline-card">
-              <div class="timeline-date">${date}</div>
-
-			  ${timelineDetailsOpen ? `
-  				<div class="timeline-details">
-  
-              ${decisionSummary
-                ? `<div class="timeline-summary">
-                     <strong>Decisions:</strong><br>
-                     ${decisionSummary}
-                   </div>`
-                : ``}
-
-              ${questionSummary
-                ? `<div class="timeline-summary">
-                     <strong>Open Questions:</strong> <br>
-                     ${questionSummary}
-                   </div>`
-                : ``}
-                  </div>
-				` : ""}
-
-              <div class="timeline-signal">
-                ${derivePosture(s)}
-              </div>
-            </div>
-          `;
-        }).join("")}
-  `;
-}
-
-function renderFocusToday() {
-  const today = new Date();
-  today.setHours(0,0,0,0);
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-
-  const overdueTasks = db.tasks.filter(t =>
-    t.status !== "Closed" &&
-    t.due &&
-    new Date(t.due) < today
-  );
-
-  const upcomingTasks = db.tasks.filter(t =>
-    t.status !== "Closed" &&
-    t.due &&
-    (new Date(t.due).getTime() === today.getTime() ||
-     new Date(t.due).getTime() === tomorrow.getTime())
-  );
-
-  const unreadQuestions = [];
-  db.meetings.forEach(m => {
-    (m.questions || []).forEach(q => {
-      if (!q.read) {
-        unreadQuestions.push({
-          meeting: m.name,
-          question: q
-        });
-      }
-    });
-  });
-
-  content.innerHTML = `
-    <h2>🧭 Focus Today</h2>
-
-    <h3>🔴 Overdue Tasks</h3>
-    ${overdueTasks.length
-      ? overdueTasks.map(t => `
-          <div class="note overdue"
-            onclick="openTaskPane('${t.id}')">
-            ${escapeHtml(t.title)}
-            <br><small>Due: ${escapeHtml(t.due)} · ${escapeHtml(t.origin)}</small>
-          </div>
-        `).join("")
-      : "<em>No overdue tasks 🎉</em>"}
-
-    <h3>🟠 Due Today / Tomorrow</h3>
-    ${upcomingTasks.length
-      ? upcomingTasks.map(t => `
-          <div class="note"
-            onclick="openTaskPane('${t.id}')">
-            ${escapeHtml(t.title)}
-            <br><small>Due: ${escapeHtml(t.due)} · ${escapeHtml(t.origin)}</small>
-          </div>
-        `).join("")
-      : "<em>No upcoming deadlines</em>"}
-
-    <h3>❓ Unread Questions</h3>
-    ${unreadQuestions.length
-      ? unreadQuestions.map(u => `
-          <div class="note unread"
-            onclick="openMeetingOutcomes('${u.meeting}')">
-            ${escapeHtml(u.question.text)}
-            <br><small>${escapeHtml(u.meeting)} · ${escapeHtml(u.question.ts)}</small>
-          </div>
-        `).join("")
-      : "<em>No open questions</em>"}
-  `;
-}
-
-function isMeetingActive(meetingName) {
-  const hasOpenTasks = db.tasks.some(t =>
-    t.origin === meetingName && t.status !== "Closed"
-  );
-
-  const meeting = db.meetings.find(m => m.name === meetingName);
-  const hasUnreadQuestions = meeting &&
-    (meeting.questions || []).some(q => !q.read);
-
-  return hasOpenTasks || hasUnreadQuestions;
-}
-
-/* ================= HEADER / SYSTEM ================= */
-btnTheme.onclick = () => {
-  document.body.dataset.theme =
-    document.body.dataset.theme==="dark" ? "" : "dark";
-};
-btnExport.onclick = exportData;
-btnImport.onclick = () => importFile.click();
-
-function getDateTimestamp(){
-  const d = new Date();
-  const pad = n => String(n).padStart(2, "0");
-
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_` +
-         `${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-}
-
-function exportData() {
-  const blob = new Blob(
-    [JSON.stringify({ data: db }, null, 2)],
-    { type:"application/json" }
-  );
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `task-backup-${getDateTimestamp()}.json`;
-  a.click();
-}
-
-importFile.onchange = () => {
-  const r = new FileReader();
-  r.onload = e => {
-    db = JSON.parse(e.target.result).data;
-    saveDB(); render();
-  };
-  r.readAsText(importFile.files[0]);
-};
-
-/* ================= SHORTCUTS ================= */
-document.addEventListener("keydown", e => {
-  if ((e.ctrlKey || e.metaKey) && e.key==="n") {
-    e.preventDefault(); openTaskModal();
-  }
-  if ((e.ctrlKey || e.metaKey) && (e.key==="k" || e.key==="K")) {
-    e.preventDefault(); openSearch();
-  }
-  if (e.key==="Escape") {
-    closeSearch(); closePane(); closeTaskModal();
-  }
-});
-
-/* ================= INIT ================= */
-// One-time migration: auto-resolve questions AND risks older than 30 days
-if (!localStorage.getItem("migration_autoResolveOldOutcomes")) {
-  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  db.meetings.forEach(m => {
-    (m.questions || []).forEach(q => {
-      if (!q.resolved && q.ts && new Date(q.ts).getTime() < cutoff) q.resolved = true;
-    });
-    (m.risks || []).forEach(r => {
-      if (!r.resolved && r.ts && new Date(r.ts).getTime() < cutoff) r.resolved = true;
-    });
-  });
-  saveDB();
-  localStorage.setItem("migration_autoResolveOldOutcomes", "1");
-}
-render();
-/* =========================================================
-   PART 3 – MEETING INTELLIGENCE (TRANSCRIPTS + AI + OUTCOMES)
-   ========================================================= */
-
-/* ================= NORMALIZE MEETINGS ================= */
-db.meetings.forEach(m=>{
-  m.transcript = m.transcript || "";
-  m.decisions  = Array.isArray(m.decisions) ? m.decisions : [];
-  m.questions  = Array.isArray(m.questions) ? m.questions : [];
-
-  // Ensure read/unread flag exists
-  m.decisions.forEach(d => {
-    if (typeof d.read !== "boolean") d.read = false;
-    if (!Array.isArray(d.linkedTasks)) d.linkedTasks = [];
-  });
-m.questions.forEach(q => {
-  if (typeof q.read !== "boolean") q.read = false;
-  if (typeof q.converted !== "boolean") q.converted = false;
-});
-});
-
-/* ================= TRANSCRIPT STATE ================= */
-let activeTranscriptMeeting = null;
-let activeReviewMeeting = null;
-let aiReviewParsed = null;
-
-/* ================= ADMIN EXTENSION ================= */
-
-
-
-/* ================= TRANSCRIPT MODAL ================= */
-let timelineDetailsOpen = false;
-let aiParsed = null;
-
-btnCloseAI.onclick  = closeAI;
-btnCloseTranscript.onclick = closeTranscript;
-btnSaveTranscript.onclick  = saveTranscript;
-btnGenPrompt.onclick       = generateAIPrompt;
-btnParseAI.onclick         = parseAIReview;
-
-
-function hideGenPrompt(){
-  const btn = document.getElementById("btnGenPrompt");
-  if (!btn) return;
-  btn.style.display = "none";
-}
-
-function showGenPrompt(){
-  const btn = document.getElementById("btnGenPrompt");
-  if (!btn) return;
-  btn.style.display = "inline-block"; // or "block"
-}
-
-function openTranscript(name){
-notify("Open Transcript", "success",7000);
-  reviewMeeting(name);
-  activeTranscriptMeeting = db.meetings.find(m=>m.name===name);
-  transcriptTitle.textContent = `Transcript – ${name}`;
-  transcriptText.value = activeTranscriptMeeting.transcript || "";
-  transcriptModal.style.display = "flex";
-}
-
-function reviewMeeting(meetingName){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m || !m.transcript) {
-       notify("Transcript is required to review a meeting", "error",7000);
-   /* alert("Transcript is required to review a meeting");*/
-     hideGenPrompt();
-    return;
-  }
-  activeReviewMeeting = m;
-}
-
-function generateAIPrompt(){
-  updateTranscript();
-  activeTranscriptMeeting.transcript = transcriptText.value.trim();
-  if (!activeTranscriptMeeting || !activeTranscriptMeeting.transcript) {
-    notify("Transcript is empty", "error", 7000);
-    return;
-  }
-
-  // Detect whether the transcript has Gemini-style pre-structured sections
-  const transcript = activeTranscriptMeeting.transcript;
-  const hasGeminiStructure = /\bNext steps\b/i.test(transcript) && /\bDecisions\b/i.test(transcript);
-
-  const prompt = hasGeminiStructure
-    ? buildGeminiPrompt(transcript)
-    : buildRawPrompt(transcript);
-
-  navigator.clipboard.writeText(prompt);
-  OpenAI();
-  aiText.value = "";
-  aiPreview.innerHTML = "";
-  setTimeout(() => aiText.focus(), 50);
-  notify("AI prompt copied — paste the JSON response and click Parse.", "success", 7000);
-}
-
-function buildGeminiPrompt(transcript){
-  return `
-You are a senior meeting analyst working with AI-generated meeting notes (e.g. Google Meet / Gemini format).
-
-The transcript below already contains pre-structured sections:
-- "Decisions" — items the AI already classified as agreed outcomes
-- "Next steps" — items the AI already classified as action items
-- "Details" — raw discussion notes which may contain risks, open questions, and context missed by the pre-structured sections
-
-YOUR JOB — two passes:
-
-PASS 1 — USE the pre-structured sections as primary source:
-- Take every item from the "Decisions" section → classify as DECISION (unless it is clearly still open — then demote to RISK or QUESTION)
-- Take every item from the "Next steps" section → classify as TASK
-- Do NOT re-derive these from the Details section — they are already extracted
-
-PASS 2 — SCAN the "Details" section only for items NOT already covered:
-- Look for RISKS: threats, dependencies, capacity blocks, or constraints raised but not resolved
-- Look for QUESTIONS: open ambiguities or pending answers that are NOT risks
-- Do NOT add new decisions or tasks from Details unless they are completely absent from the pre-structured sections
-
-CLASSIFICATION DEFINITIONS (apply in strict priority order — top rule wins):
-1. DECISION → Explicitly agreed, confirmed, or signed off. Closed in the meeting.
-2. TASK     → Concrete next action with an owner. Only if NOT already a Decision.
-3. RISK     → Could stall or block progress. NOT resolved in the meeting.
-4. QUESTION → Open ambiguity, low-stakes unknown. NOT a Risk.
-
-STRICT ANTI-OVERLAP RULES:
-- Each point appears in EXACTLY ONE category — no exceptions.
-- A Decision CANNOT also be a Task.
-- A Risk CANNOT also be a Question.
-- If the same subject appears in both Decisions and Next steps, put it in DECISIONS only.
-- Tiebreaker: Decision > Task > Risk > Question.
-
-OUTPUT FORMAT — return strict JSON only, no markdown, no explanation, no code fences:
-{
-  "decisions": ["<concise statement> [Confirmed by: Name]"],
-  "task_candidates": ["<Verb-first action> [Owner: Name, Due: date/timeframe or 'not stated']"],
-  "risks": ["<Threat or constraint statement> [Raised by: Name]"],
-  "questions": [{"text": "<Open question> [Raised by: Name]", "answer": "<answer or suggestion given in meeting, or null if unanswered>"}],
-  "timeline_summary": "<2-3 sentence executive narrative: what was decided, what actions are pending, and the key risk posture. Name every person and workstream mentioned.>"
-}
-
-QUALITY CHECKS before returning:
-- Does any subject appear in more than one array? Remove the lower-priority duplicate.
-- Do all task_candidates start with a verb? Rewrite any that do not.
-- Are all decisions truly closed? Demote any that are still open.
-- answer should be null if the question was not discussed or answered in the meeting.
-- Do NOT wrap the JSON in markdown code fences or add any explanation text.
-
-Transcript:
-<<<
-${transcript}
->>>
-`.trim();
-}
-
-function buildRawPrompt(transcript){
-  return `
-You are a senior meeting analyst. Extract structured signals from the transcript below.
-
-CLASSIFICATION RULES — apply in strict order (top rule wins, never repeat a point):
-
-1. DECISION  → A conclusion explicitly agreed, confirmed, or signed off by the group or a named authority.
-               Includes rejected options ("We will NOT use X").
-               Test: "Was this point CLOSED in the meeting?" → Yes = Decision.
-
-2. TASK      → A concrete next action assigned (or clearly implied) to a specific person, with a deliverable.
-               Only if NOT already captured as a Decision.
-               Test: "Does someone need to DO something after this meeting?" → Yes (and not a Decision) = Task.
-
-3. RISK      → A threat, dependency, or constraint that could block or delay progress and was NOT resolved.
-               Test: "Could this stall progress?" → Yes (still open) = Risk.
-
-4. QUESTION  → An unresolved ambiguity or pending answer that does NOT qualify as a Risk.
-               Test: "Is this unknown but low-stakes?" → Yes = Question.
-
-STRICT ANTI-OVERLAP RULES:
-- Each point goes into EXACTLY ONE category — no exceptions.
-- A Decision CANNOT also be a Task.
-- A Risk CANNOT also be a Question.
-- Tiebreaker: Decision > Task > Risk > Question.
-
-OUTPUT FORMAT — return strict JSON only, no markdown, no explanation, no code fences:
-{
-  "decisions": ["<concise statement> [Confirmed by: Name]"],
-  "task_candidates": ["<Verb-first action> [Owner: Name, Due: date/timeframe or 'not stated']"],
-  "risks": ["<Threat statement> [Raised by: Name]"],
-  "questions": [{"text": "<Open question> [Raised by: Name]", "answer": "<answer or suggestion given in meeting, or null if unanswered>"}],
-  "timeline_summary": "<2-3 sentence executive narrative: what was decided, what is pending, and the key risk posture. Name every person and workstream mentioned.>"
-}
-
-QUALITY CHECKS before returning:
-- Does any subject appear in more than one array? Remove the lower-priority duplicate.
-- Do all task_candidates start with a verb? Rewrite any that do not.
-- Are all decisions truly closed? Demote any that are still open.
-- answer should be null if the question was not discussed or answered in the meeting.
-- Do NOT wrap the JSON in markdown code fences or add any explanation text.
-
-Transcript:
-<<<
-${transcript}
->>>
-`.trim();
-}
-
-function closeAI(){
-  aiModal.style.display = "none";
-  aiParsed = null;
-  activeReviewMeeting = null;
-  aiReviewParsed = null;
-}
-
-function OpenAI(){
-  aiModal.style.display = "flex";
-
-  aiText.value = "";
-  aiPreview.innerHTML = "";
-  document.getElementById("aiParseHint").textContent = "";
-  btnParseAI.textContent = "Parse & Save";
-
-  // Pre-fill date with today; user can change it to the actual meeting date
-  const datePicker = document.getElementById("aiMeetingDate");
-  if (datePicker && !datePicker.value) {
-    datePicker.value = new Date().toISOString().slice(0, 10);
-  }
-
-  setTimeout(() => aiText.focus(), 50);
-}
-
-
-// Heal unescaped double quotes inside JSON string values.
-// AI models sometimes embed "Nickname" inside a string without escaping them.
-// Strategy: walk char-by-char; when inside a string and a `"` is found,
-// peek at the next non-whitespace char — if it is NOT a JSON structural
-// character (, } ] : newline) treat it as an embedded quote and escape it.
-function healJSONQuotes(str) {
-  let out = "";
-  let inStr = false;
-  let i = 0;
-  while (i < str.length) {
-    const ch = str[i];
-    if (!inStr) {
-      if (ch === '"') inStr = true;
-      out += ch;
-    } else {
-      if (ch === '\\') {
-        out += ch; i++;
-        if (i < str.length) out += str[i];
-      } else if (ch === '"') {
-        let j = i + 1;
-        while (j < str.length && (str[j] === ' ' || str[j] === '\t')) j++;
-        const next = str[j];
-        const structural = (next === ',' || next === '}' || next === ']' ||
-                            next === ':' || next === '\n' || next === '\r' ||
-                            j >= str.length);
-        if (structural) { inStr = false; out += '"'; }
-        else             { out += '\\"'; }
-      } else {
-        out += ch;
-      }
-    }
-    i++;
-  }
-  return out;
-}
-
-function parseAIReview(){
-  let data;
-  try {
-    const raw = aiText.value;
-
-    // Step 1 — sanitize invisible/encoding artifacts introduced by AI chat UIs
-    const sanitized = raw
-      .replace(/^﻿/, '')                          // BOM
-      .replace(/“|”/g, '"')                  // curly double quotes → straight
-      .replace(/‘|’/g, "'")                  // curly single quotes → straight
-      .replace(/–|—/g, '-')                  // em/en dash → hyphen
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, ''); // control chars
-
-    // Step 2 — extract the outermost { … } (handles markdown fences, preamble text)
-    const start = sanitized.indexOf("{");
-    const end   = sanitized.lastIndexOf("}");
-    if (start === -1 || end === -1 || end <= start) throw new Error("no JSON object found");
-    const extracted = sanitized.slice(start, end + 1);
-
-    // Step 3 — try standard parse, then healed parse
-    try {
-      data = JSON.parse(extracted);
-    } catch {
-      data = JSON.parse(healJSONQuotes(extracted));
-    }
-  } catch (err) {
-    notify("Could not parse — copy the full AI response and try again.", "error", 8000);
-    console.error("JSON parse error:", err);
-    return;
-  }
-
-  const m = activeReviewMeeting;
-  if (!m) {
-    notify("No meeting attached. Close and re-open the transcript.", "warn", 7000);
-    return;
-  }
-
-  normalizeMeetingOutcomes(m);
-
-  // Use the meeting date chosen by the user; fall back to today
-  const pickerVal = (document.getElementById("aiMeetingDate")?.value || "").trim();
-  const meetingDate = pickerVal || new Date().toISOString().slice(0, 10);
-
-  showParseReview(data, m, meetingDate);
-}
-
-// Store original aiModal HTML once for restoration
-let _aiModalOriginalHTML = null;
-
-function showParseReview(data, m, meetingDate) {
-  const modal = document.getElementById("aiModal");
-  if (!_aiModalOriginalHTML) {
-    _aiModalOriginalHTML = modal.querySelector(".modal-content").innerHTML;
-  }
-
-  // Normalise text helper for dedup
-  function normalise(str){
-    return (str || "").toLowerCase()
-      .replace(/[^a-z0-9\s]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  // Build seen-set from already stored items
-  const seen = new Set([
-    ...m.decisions.map(x => normalise(x.text)),
-    ...m.questions.map(x => normalise(x.text)),
-    ...m.risks.map(x  => normalise(x.text)),
-    ...m.task_candidates.map(x => normalise(x.text))
-  ]);
-
-  function dedup(items, isObjArr) {
-    const out = [];
-    items.forEach(item => {
-      const text = isObjArr ? (item.text || "") : (item || "");
-      const n = normalise(text);
-      if (!n || seen.has(n)) return;
-      seen.add(n);
-      out.push(isObjArr ? item : text.trim());
-    });
-    return out;
-  }
-
-  const decisions      = dedup(data.decisions      || [], false);
-  const task_candidates= dedup(data.task_candidates|| [], false);
-  const risks          = dedup(data.risks          || [], false);
-  // questions may be objects {text, answer} or plain strings
-  const rawQs = (data.questions || []).map(q =>
-    typeof q === "string" ? { text: q, answer: null } : q
-  );
-  const questions = dedup(rawQs, true);
-
-  function renderSection(label, items, key, isQuestion) {
-    if (!items.length) return "";
-    let html = `<div style="margin-bottom:16px"><div style="font-weight:600;font-size:13px;margin-bottom:8px;color:var(--accent)">${label}</div>`;
-    items.forEach((item, i) => {
-      const text = isQuestion ? (item.text || "") : item;
-      const answer = isQuestion ? (item.answer || null) : null;
-      html += `<label style="display:block;padding:8px;margin-bottom:4px;background:var(--bg);border-radius:6px;cursor:pointer">
-        <input type="checkbox" checked data-key="${key}" data-i="${i}" style="margin-right:8px">
-        <span style="font-size:13px">${escapeHtml(text)}</span>`;
-      if (isQuestion && answer && answer !== "null") {
-        html += `<div style="margin-top:4px;margin-left:22px;font-size:12px;color:var(--muted)">💡 ${escapeHtml(answer)}</div>`;
-      }
-      html += `</label>`;
-    });
-    html += `</div>`;
-    return html;
-  }
-
-  const mc = modal.querySelector(".modal-content");
-  mc.innerHTML = `
-    <h3>✅ Review & Select what to save</h3>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Meeting date: <strong>${meetingDate}</strong> — uncheck items you don't want to save</div>
-    <div id="reviewSections">
-      ${renderSection("📌 Decisions", decisions, "decisions", false)}
-      ${renderSection("✅ Tasks (Action Items)", task_candidates, "tasks", false)}
-      ${renderSection("⚠️ Risks", risks, "risks", false)}
-      ${renderSection("❓ Questions", questions, "questions", true)}
-    </div>
-    <div style="margin-top:16px;display:flex;gap:8px">
-      <button id="btnSaveSelected">Save Selected →</button>
-      <button class="secondary" id="btnReviewBack">← Back</button>
-    </div>
-  `;
-
-  document.getElementById("btnSaveSelected").onclick = () => {
-    const boxes = mc.querySelectorAll("input[type=checkbox]");
-    const selected = { decisions: decisions.map(() => false), tasks: task_candidates.map(() => false), risks: risks.map(() => false), questions: questions.map(() => false) };
-    boxes.forEach(b => {
-      const key = b.dataset.key;
-      const i = parseInt(b.dataset.i, 10);
-      if (key && !isNaN(i)) selected[key][i] = b.checked;
-    });
-    saveSelectedOutcomes(data, m, meetingDate, selected, decisions, task_candidates, risks, questions);
-  };
-
-  document.getElementById("btnReviewBack").onclick = () => {
-    restoreAIModal();
-  };
-}
-
-function restoreAIModal() {
-  if (_aiModalOriginalHTML) {
-    const modal = document.getElementById("aiModal");
-    modal.querySelector(".modal-content").innerHTML = _aiModalOriginalHTML;
-    // Re-wire buttons
-    document.getElementById("btnParseAI").onclick = parseAIReview;
-    document.getElementById("btnCloseAI").onclick = closeAI;
-  }
-}
-
-function cleanTaskText(text) {
-  return (text || "").replace(/\s*\[(Owner|Due|Raised by|Confirmed by):[^\]]*\]/gi, "").trim();
-}
-
-function extractDueDate(text) {
-  const m = (text || "").match(/\[Due:\s*([^\]]+)\]/i);
-  if (!m) return null;
-  const raw = m[1].trim();
-  // Try common patterns: "15 Jan", "Jan 15", "2024-01-15"
-  const d = new Date(raw);
-  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
-  // Try "DD Mon" pattern
-  const dm = raw.match(/(\d{1,2})\s+([A-Za-z]{3,})/);
-  if (dm) {
-    const d2 = new Date(`${dm[2]} ${dm[1]} ${new Date().getFullYear()}`);
-    if (!isNaN(d2.getTime())) return d2.toISOString().slice(0, 10);
-  }
-  return null;
-}
-
-function saveSelectedOutcomes(data, m, meetingDate, selected, decisions, task_candidates, risks, questions) {
-  const now = () => new Date(meetingDate + "T12:00:00.000Z").toISOString();
-
-  (selected.decisions || []).forEach((checked, i) => {
-    if (!checked) return;
-    const text = decisions[i];
-    m.decisions.push({ id: crypto.randomUUID(), text, ts: now(), read: false, linkedTasks: [] });
-  });
-
-  (selected.questions || []).forEach((checked, i) => {
-    if (!checked) return;
-    const q = questions[i];
-    const text = q.text || q;
-    const answer = (typeof q === "object" && q.answer && q.answer !== "null") ? q.answer : "";
-    m.questions.push({ id: crypto.randomUUID(), text, answer, ts: now(), read: false, converted: false, resolved: false });
-  });
-
-  (selected.risks || []).forEach((checked, i) => {
-    if (!checked) return;
-    const text = risks[i];
-    m.risks.push({ id: crypto.randomUUID(), text, ts: now(), read: false });
-  });
-
-  (selected.tasks || []).forEach((checked, i) => {
-    if (!checked) return;
-    const text = task_candidates[i];
-    m.task_candidates.push({ id: crypto.randomUUID(), text, ts: now(), read: false, converted: false, updates: [] });
-    db.tasks.push({
-      id: crypto.randomUUID(),
-      title: cleanTaskText(text),
-      tags: [],
-      status: "Not Started",
-      due: extractDueDate(text) || "",
-      created: meetingDate,
-      origin: m.name,
-      updates: [],
-      decisionId: null
-    });
-  });
-
-  if (data.timeline_summary) {
-    m.aiTimelineSummary = { ts: now(), text: data.timeline_summary };
-  }
-
-  const dCount = (selected.decisions || []).filter(Boolean).length;
-  const tCount = (selected.tasks || []).filter(Boolean).length;
-  const rCount = (selected.risks || []).filter(Boolean).length;
-  const qCount = (selected.questions || []).filter(Boolean).length;
-
-  saveDB();
-
-  // Restore modal to original state
-  restoreAIModal();
-  const modal = document.getElementById("aiModal");
-  modal.style.display = "none";
-
-  closeTranscript();
-  render();
-  deleteMeetingTranscript(m.name);
-
-  notify(
-    `Saved to ${meetingDate} — ${dCount} decisions · ${tCount} tasks · ${rCount} risks · ${qCount} questions`,
-    "success", 8000
-  );
-}
-
-function normalizeTags(tags){
-  if(!Array.isArray(tags)) return [];
-  return [...new Set(tags.map(t=>t.toLowerCase().trim()).filter(Boolean))];
-}
-
-function closeTranscript(){
-  showGenPrompt();
-  transcriptModal.style.display = "none";
-  activeTranscriptMeeting = null;
-}
-
-function saveTranscript(){
-  activeTranscriptMeeting.transcript = transcriptText.value.trim();
-  saveDB();
-  closeTranscript();
-}
-
-function updateTranscript(){
-  activeTranscriptMeeting.transcript = transcriptText.value.trim();
-  saveDB();
-}
-
-function deleteMeetingTranscript(meetingName){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m) return;
-
-  if (!m.transcript || !m.transcript.trim()) {
-    notify("No Transcript to delete", "warn", 7000);
-    return;
-  }
-
-  m.transcript = "";              // remove transcript
-  saveDB();
-  render();
-
-  notify("Transcript deleted successfully.", "success", 7000);
-
-}
-
-/* ==================  PHASE-2 AI =================*/
-
-function createTasksFromReview(){
-  const boxes = aiPreview.querySelectorAll("input[type=checkbox]");
-  let created = 0;
-
-  boxes.forEach(b=>{
-    if (b.checked){
-      db.tasks.push({
-        id: crypto.randomUUID(),
-        title: aiReviewParsed.suggested_tasks[b.dataset.i],
-        tags: ["review"],
-        origin: activeReviewMeeting.name,
-        due: "",
-        created: new Date().toISOString().slice(0,10),
-        status: "Not Started",
-        updates: []
-      });
-      created++;
-    }
-  });
-
-  saveDB();
-  render();
-  closeAI();
-  alert(`${created} follow-up task(s) created`);
-
-
-}
-
-/*function toggleOutcomeRead(type, meetingName, id){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m) return;
-
-  const list = type === "decision" ? m.decisions : m.questions;
-  const item = list.find(x => x.id === id);
-  if (!item) return;
-
-  item.read = !item.read;
-  saveDB();
-  renderMeetingOutcomes();
-  requestAnimationFrame(() => {
-  const el = document.querySelector(
-    `.note[data-outcome-id="${id}"]`
-  );
-  if (el) el.classList.add("outcome-just-updated");
-});
-}*/
-function toggleOutcomeRead(type, meetingName, id){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m) return;
-
-  // 🔹 Map outcome types to meeting data arrays
-  const outcomeMap = {
-    decision: m.decisions,
-    question: m.questions,
-    risk: m.risks,
-    task_candidate: m.task_candidates
-  };
-
-  const list = outcomeMap[type];
-  if (!list) return;
-
-  const item = list.find(x => x.id === id);
-  if (!item) return;
-
-  // 🔁 Toggle read state
-  item.read = !item.read;
-
-  saveDB();
-  renderMeetingOutcomes();
-
-  // 🎯 Visual feedback
-  requestAnimationFrame(() => {
-    const el = document.querySelector(
-      `.note[data-outcome-id="${id}"]`
-    );
-    if (el) el.classList.add("outcome-just-updated");
-  });
-}
-
-function promptLinkTask(meetingName, decisionId){
-  const openTasks = db.tasks.filter(t => t.status !== "Closed");
-  if (!openTasks.length) {
-    notify("No Open task available", "error", 7000);
-    return;
-  }
-
-  const list = openTasks
-    .map((t,i)=>`${i+1}. ${t.title}`)
-    .join("\n");
-
-  const choice = prompt(
-    "Select task number to link:\n\n" + list
-  );
-
-  const idx = parseInt(choice,10) - 1;
-  if (isNaN(idx) || !openTasks[idx]) return;
-
-  linkTaskToDecision(meetingName, decisionId, openTasks[idx].id);
-}
-
-/*function convertQuestionToTask(meetingName, questionId){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if(!m) return;
-
-  const q = m.questions.find(x => x.id === questionId);
-  if(!q) return;
-
-  db.tasks.push({
-    id: crypto.randomUUID(),
-    title: q.text,
-    tags: ["question"],
-    origin: m.name,
-    due: "",
-    created: new Date().toISOString().slice(0,10),
-    status: "Not Started",
-    updates: []
-  });
-
-  // Mark question as read
-  q.read = true;
-  q.converted = true;
-  
-  saveDB();
-  render();
-  notify("Task created sucessfully","success",7000);
-  renderMeetingOutcomes();
-  requestAnimationFrame(() => {
-  const el = document.querySelector(
-    `.note[data-outcome-id="${questionId}"]`
-  );
-  if (el) el.classList.add("outcome-just-updated");
-});
-}*/
-
-function convertOutcomeToTask(meetingName, outcomeType, outcomeId){
- // notify("In Task creation", "success", 6000);
-  
-
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m) return;
-  
-  const map = {
-    decision: m.decisions,
-    question: m.questions,
-    risk: m.risks,
-    task_candidate: m.task_candidates
-    // Optional owner extraction (safe)
-
-  };
-
-  const list = map[outcomeType];
-  if (!list) return;
-
-  const o = list.find(x => x.id === outcomeId);
-  if (!o || o.converted) return;
-  
- // console.log("OUTCOME TEXT >>>", o.text); // ✅ correct debug
-  
-  const ownerTag = extractOwnerTagsFromText(o.text);
-
-  // 🧼 Clean title (remove emoji + label)
-  const cleanTitle = o.text
-    .replace(/^(✅|❓|⚠️|➡️)\s*(Decision:|Question:|Risk:|Follow-up:)?\s*/,"")
-    .trim();
-
-  // 🏷 Tag by type
-  const tagMap = {
-    decision: "decision",
-    question: "question",
-    risk: "risk",
-    task_candidate: "follow-up"
-  };
-
-  const taskId = crypto.randomUUID();
-
-  db.tasks.push({
-    id: taskId,
-    title: cleanTitle,
-    tags: [
-  tagMap[outcomeType],
-  ...(ownerTag ? [ownerTag] : [])
-],
-    origin: m.name,
-    due: datePlusDays(4),
-    created: new Date().toISOString().slice(0,10),
-    status: "Not Started",
-    updates: [],
-    source: {
-      type: outcomeType,
-      meeting: m.name,
-      outcomeId
-    }
-  });
-
-  // Mark outcome
-  o.read = true;
-  o.converted = true;
-
-  saveDB();
-  render();
-  notify("Task created successfully", "success", 6000);
-
-  renderMeetingOutcomes();
-
-  requestAnimationFrame(() => {
-    const el = document.querySelector(
-      `.note[data-outcome-id="${outcomeId}"]`
-    );
-    if (el) el.classList.add("outcome-just-updated");
-  });
-}
-
-function datePlusDays(days){
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0,10);
-}
-
-function extractOwnerTagsFromText(text){
-  if (!text) return null;
-
-  // 1️⃣ Look for (Name) anywhere
-  let match = text.match(/\(([^()]{2,50})\)/);
-  if (!match) return null;
-
-  let owner = match[1].trim();
-
-  // 2️⃣ Ignore non-owners
-  const blacklist = [
-    "confirmed by",
-    "raised by",
-    "meeting group",
-    "implicit"
-  ];
-
-  if (blacklist.some(b => owner.toLowerCase().includes(b))) {
-    return null;
-  }
-
-  return owner;
-}
-
-function linkTaskToDecision(meetingName, decisionId, taskId){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m) return;
-
-  const d = m.decisions.find(x => x.id === decisionId);
-  const t = db.tasks.find(x => x.id === taskId);
-  if (!d || !t) return;
-
-  if (!d.linkedTasks.includes(taskId)) {
-    d.linkedTasks.push(taskId);
-    t.decisionId = decisionId;
-  }
-
-  saveDB();
-  render();
-  renderMeetingOutcomes();
-}
-
-function createTasksFromAI(){
-  const now = new Date().toLocaleString();
-  const boxes = aiPreview.querySelectorAll("input[type=checkbox]");
-  let created = 0;
-
-  boxes.forEach(b=>{
-    if(b.checked){
-      const t = aiParsed.tasks[b.dataset.i];
-      db.tasks.push({
-        id: crypto.randomUUID(),
-        title: t.title,
-        tags: normalizeTags(t.tags),
-        origin: activeTranscriptMeeting.name,
-        due: "",
-        created: new Date().toISOString().slice(0,10),
-        status: "Not Started",
-        updates: []
-      });
-      created++;
-    }
-  });
-
-  aiParsed.decisions.forEach(d=>{
-	activeTranscriptMeeting.decisions.push({
-  	id: crypto.randomUUID(),
- 	 text: d,
- 	 ts: now,
- 	 read: false
-});
-  });
-
-  aiParsed.questions.forEach(q=>{
-	activeTranscriptMeeting.questions.push({
-  	id: crypto.randomUUID(),
-  	text: q,
-  	ts: now,
-  	read: false
-	});
-  });
-
-  saveDB();
-  closeAI();
-  render();
-  alert(`${created} task(s) created`);
-}
-
-/* ================= NOTIFICATION =======================*/
-
-function notify(message, type = "info", timeout = 4000){
-  const container = document.getElementById("toastContainer");
-  if (!container) return;
-
-  const toast = document.createElement("div");
-  toast.className = `toast ${type}`;
-  toast.textContent = message;
-
-  container.appendChild(toast);
-
-  // Auto-scroll to latest
-  container.scrollTop = container.scrollHeight;
-
-  // Auto-remove
-  setTimeout(() => {
-    toast.remove();
-  }, timeout);
-}
-
-window.alert = function(message){
-  notify(message, "info");
-};
-
-/*========================================================*/
-
-/* ================= OUTCOMES IN RIGHT PANE ================= */
-window.toggleOutcomeRead = toggleOutcomeRead;
-//window.convertQuestionToTask = convertQuestionToTask;
-window.convertOutcomeToTask = convertOutcomeToTask;
-window.promptLinkTask = promptLinkTask;
-window.setOutcomeFilter = setOutcomeFilter;
-window.toggleOutcomeDate = toggleOutcomeDate;
-
-let activeOutcomeMeeting = null;
-let collapsedOutcomeDates = {};
-let outcomeTypeFilter = "all"; // all | decision | question
-
-function formatDateGroup(ts){
-  const d = new Date(ts);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-
-  const dStr = d.toDateString();
-  if (dStr === today.toDateString()) return "Today";
-  if (dStr === yesterday.toDateString()) return "Yesterday";
-
-  return d.toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  });
-}
-
-function groupByDate(items){
-  return items.reduce((acc, item) => {
-    const key = formatDateGroup(item.ts);
-    acc[key] ||= [];
-    acc[key].push(item);
-    return acc;
-  }, {});
-}
-
-function openMeetingOutcomes(name){
-  // ✅ Only set the meeting context
-  activeOutcomeMeeting = db.meetings.find(m => m.name === name);
-  if (!activeOutcomeMeeting) return;
-
-  // ✅ CLEAR any previously selected outcome
-  activeOutcomeType = null;
-  activeOutcomeId = null;
-
-  paneTitle.textContent = `Outcomes – ${name}`;
-  paneMeta.textContent  = "Decisions & Questions";
-  document.body.classList.add("right-pane-open");
-  renderMeetingOutcomes();
-  const momActions = document.getElementById("paneMomActions");
-  if (momActions) momActions.style.display = "";
-}
-
-function setOutcomeFilter(type){
-  outcomeTypeFilter = type;
-  renderMeetingOutcomes();
-}
-
-function toggleOutcomeDate(date){
-  collapsedOutcomeDates[date] = !collapsedOutcomeDates[date];
-  renderMeetingOutcomes();
-}
-
-
-function normalizeMeetingOutcomes(meeting){
-
-  meeting.decisions ||= [];
-  meeting.questions ||= [];
-  meeting.risks ||= [];
-  meeting.task_candidates ||= [];
-
-  meeting.task_candidates.forEach(tc => {
-    if (!tc.id) tc.id = crypto.randomUUID();
-    if (!Array.isArray(tc.updates)) tc.updates = [];
-    if (typeof tc.read !== "boolean") tc.read = false;
-    if (typeof tc.converted !== "boolean") tc.converted = false;
-  });
-
-
-  // 🔑 Ensure arrays exist (CRITICAL)
-  if (!Array.isArray(meeting.decisions)) meeting.decisions = [];
-  if (!Array.isArray(meeting.questions)) meeting.questions = [];
-  if (!Array.isArray(meeting.risks)) meeting.risks = [];
-  if (!Array.isArray(meeting.task_candidates)) meeting.task_candidates = [];
-
-  // ---------- Decisions ----------
-  meeting.decisions.forEach(d => {
-    if (!d.id) d.id = crypto.randomUUID();
-    if (!Array.isArray(d.linkedTasks)) d.linkedTasks = [];
-    if (typeof d.read !== "boolean") d.read = false;
-  });
-
-  // ---------- Questions ----------
-  meeting.questions.forEach(q => {
-    if (!q.id) q.id = crypto.randomUUID();
-    if (typeof q.read !== "boolean") q.read = false;
-    if (typeof q.converted !== "boolean") q.converted = false;
-    if (typeof q.resolved !== "boolean") q.resolved = false;
-    if (typeof q.answer !== "string") q.answer = "";
-  });
-
-  // ---------- Risks ----------
-  meeting.risks.forEach(r => {
-    if (!r.id) r.id = crypto.randomUUID();
-    if (typeof r.read !== "boolean") r.read = false;
-    if (typeof r.resolved !== "boolean") r.resolved = false;
-  });
-
-  // ---------- Task Candidates ----------
-  meeting.task_candidates.forEach(t => {
-    if (!t.id) t.id = crypto.randomUUID();
-    if (typeof t.read !== "boolean") t.read = false;
-    if (typeof t.converted !== "boolean") t.converted = false;
-  });
-}
-
-
-function renderMeetingOutcomes(){
-
-  const m = activeOutcomeMeeting;
-  if (!m) return;
-
-  normalizeMeetingOutcomes(m);
-  saveDB();
-
-  // 1️⃣ Combine ALL outcome types
-  let combined = [
-    ...m.decisions.map(d => ({ ...d, _type: "decision" })),
-    ...m.questions.map(q => ({ ...q, _type: "question" })),
-    ...(m.risks || []).map(r => ({ ...r, _type: "risk" })),
-    ...(m.task_candidates || []).map(t => ({ ...t, _type: "task_candidate" }))
-  ];
-
-  // 2️⃣ Filter by type
-  if (outcomeTypeFilter !== "all") {
-    combined = combined.filter(i => i._type === outcomeTypeFilter);
-  }
-
-  // 3️⃣ Sort newest → oldest
-  combined.sort((a,b)=> new Date(b.ts) - new Date(a.ts));
-
-  // 4️⃣ Group by date
-  const groups = groupByDate(combined);
-
-  let html = `
-    <h3>${m.name}</h3>
-
-    <div class="outcome-filters">
-      <button class="${outcomeTypeFilter==='all'?'active':''}"
-        onclick="setOutcomeFilter('all')">All</button>
-      <button class="${outcomeTypeFilter==='decision'?'active':''}"
-        onclick="setOutcomeFilter('decision')">Decisions</button>
-      <button class="${outcomeTypeFilter==='question'?'active':''}"
-        onclick="setOutcomeFilter('question')">Questions</button>
-      <button class="${outcomeTypeFilter==='risk'?'active':''}"
-        onclick="setOutcomeFilter('risk')">Risks</button>
-      <button class="${outcomeTypeFilter==='task_candidate'?'active':''}"
-        onclick="setOutcomeFilter('task_candidate')">Tasks</button>
-    </div>
-  `;
-
-  // 5️⃣ Render groups
-  Object.entries(groups).forEach(([date, items]) => {
-
-    // Default collapsed
-    if (collapsedOutcomeDates[date] === undefined) {
-      collapsedOutcomeDates[date] = true;
-    }
-
-    html += `
-      <div class="date-group">
-        <div class="date-header"
-          onclick="toggleOutcomeDate('${date}')">
-          ${date} (${items.length})
-          <span class="chevron">
-            ${collapsedOutcomeDates[date] ? "▶" : "▼"}
-          </span>
-        </div>
-    `;
-
-    if (!collapsedOutcomeDates[date]) {
-
-      items.forEach(item => {
-
-        // 🧠 Shared note shell
-        html += `
-          <div class="note ${item.read ? 'read' : 'unread'}"
-               data-outcome-id="${item.id}"
-               onclick="openOutcomeItem('${m.name}','${item._type}','${item.id}')">
-
-            <label class="toggle" title="Mark read / unread">
-              <input type="checkbox"
-                ${item.read ? "checked" : ""}
-                onclick="event.stopPropagation();
-                         toggleOutcomeRead('${item._type}','${m.name}','${item.id}')">
-              <span class="toggle-slider"></span>
-            </label>
-        `;
-
-        // 🔹 Type badge
-     /*   html += `
-          <span class="tag-pill">${item._type.replace("_"," ")}</span>
-        `;*/
-
-        // 🔹 Action per type
-     /* if (item._type === "question") {
-          html += `
-            <button class="icon"
-              title="${item.converted ? 'Already converted' : 'Convert to task'}"
-              ${item.converted ? 'disabled' : ''}
-              onclick="event.stopPropagation();
-                ${item.converted ? "" :
-                  `convertQuestionToTask('${m.name}','${item.id}')`}">
-              ➕
-            </button>
-          `;
-        }*/
-        
-       if (["question","decision","risk","task_candidate"].includes(item._type)) {
-  html += `
-    <button class="icon"
-      title="${item.converted ? 'Already converted' : 'Convert to task'}"
-      ${item.converted ? 'disabled' : ''}
-      onclick="event.stopPropagation();
-        ${item.converted ? "" :
-          `convertOutcomeToTask('${m.name}','${item._type}','${item.id}')`}">
-      ➕
-    </button>
-  `;
-}
-if (item._type === "question") {
-  const qBg     = item.resolved ? "var(--accent)" : "none";
-  const qColor  = item.resolved ? "#fff" : "var(--muted)";
-  const qBorder = item.resolved ? "var(--accent)" : "var(--border)";
-  const qTitle  = item.resolved ? "Reopen question" : "Mark as answered";
-  const qLabel  = item.resolved ? "✓ Answered" : "Mark Answered";
-  html += `<button class="icon" style="font-size:11px;padding:2px 6px;border-radius:6px;background:${qBg};color:${qColor};border:1px solid ${qBorder}" title="${qTitle}" onclick="event.stopPropagation();markResolved('${m.name}','question','${item.id}')">${qLabel}</button>`;
-}
-if (item._type === "risk") {
-  const rBg     = item.resolved ? "var(--accent)" : "none";
-  const rColor  = item.resolved ? "#fff" : "var(--muted)";
-  const rBorder = item.resolved ? "var(--accent)" : "var(--border)";
-  const rTitle  = item.resolved ? "Reopen risk" : "Mark as mitigated";
-  const rLabel  = item.resolved ? "✓ Mitigated" : "Mark Mitigated";
-  html += `<button class="icon" style="font-size:11px;padding:2px 6px;border-radius:6px;background:${rBg};color:${rColor};border:1px solid ${rBorder}" title="${rTitle}" onclick="event.stopPropagation();markResolved('${m.name}','risk','${item.id}')">${rLabel}</button>`;
-}
-
-        html += `
-            <span style="margin-right:4px">${outcomeTypeIcon(item._type)}</span>${escapeHtml(item.text)}<br>
-            <small>${new Date(item.ts).toLocaleString()}</small>
-          </div>
-        `;
-      });
-    }
-
-    html += `</div>`;
-  });
-
-  paneBody.innerHTML = html;
-}
-
-function markResolved(meetingName, type, id){
-  const m = db.meetings.find(x => x.name === meetingName);
-  if (!m) return;
-  const list = type === "question" ? m.questions : m.risks;
-  const item = list.find(x => x.id === id);
-  if (!item) return;
-  item.resolved = !item.resolved;
-  saveDB();
-  renderMeetingOutcomes();
-  notify(item.resolved
-    ? (type === "question" ? "Marked as answered" : "Marked as mitigated")
-    : (type === "question" ? "Reopened question" : "Reopened risk"),
-    "success", 3000);
-}
-
-function openOutcomeItem(meetingName, type, id){
-  activeOutcomeMeeting = db.meetings.find(m => m.name === meetingName);
-  activeOutcomeType = type;
-  activeOutcomeId = id;
-
-  document.body.classList.add("right-pane-open");
-  renderOutcomePane();
-  const momActions = document.getElementById("paneMomActions");
-  if (momActions) momActions.style.display = "";
-
-  console.log("🔎 Outcome selected", type, id);
-}
-
-function renderOutcomePane(){
-  const m = activeOutcomeMeeting;
-  if (!m || !activeOutcomeType || !activeOutcomeId) return;
-
-  // Questions: show all questions for this meeting in checklist style
-  if (activeOutcomeType === "question") {
-    normalizeMeetingOutcomes(m);
-    const questions = m.questions || [];
-    paneTitle.textContent = `❓ Questions`;
-    paneMeta.textContent = `${m.name} · ${questions.length} question${questions.length !== 1 ? "s" : ""}`;
-
-    const rows = questions.map(q => {
-      const checked = q.resolved ? "checked" : "";
-      const rowStyle = q.id === activeOutcomeId
-        ? "background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--accent)"
-        : "padding:10px 12px;margin-bottom:10px;border-left:3px solid transparent";
-      const textStyle = q.resolved
-        ? "font-size:13px;font-weight:600;color:var(--muted);text-decoration:line-through"
-        : "font-size:13px;font-weight:600;color:var(--text)";
-      const answerHtml = (q.answer && q.answer.trim() && q.answer !== "null")
-        ? `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);line-height:1.5">💡 ${escapeHtml(q.answer)}</div>`
-        : `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);opacity:0.6">💡 No answer recorded yet</div>`;
-      return `
-        <div style="${rowStyle}">
-          <div style="display:flex;align-items:flex-start;gap:10px">
-            <input type="checkbox" ${checked} style="margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--accent)"
-              onchange="markResolved('${escapeHtml(m.name)}','question','${q.id}')">
-            <span style="${textStyle}">${escapeHtml(q.text)}</span>
-          </div>
-          ${answerHtml}
-        </div>`;
-    }).join("");
-
-    paneBody.innerHTML = rows || `<div style="color:var(--muted);font-size:13px">No questions recorded yet.</div>`;
-    return;
-  }
-
-  // All other types: single-item detail view
-  let item;
-  if (activeOutcomeType === "decision")            item = m.decisions.find(x => x.id === activeOutcomeId);
-  else if (activeOutcomeType === "risk")            item = m.risks.find(x => x.id === activeOutcomeId);
-  else if (activeOutcomeType === "task_candidate")  item = m.task_candidates.find(x => x.id === activeOutcomeId);
-
-  if (!item) return;
-
-  paneTitle.textContent = `${outcomeTypeIcon(activeOutcomeType)} ${item.text}`;
-  paneMeta.textContent = `${activeOutcomeType.replace("_"," ").toUpperCase()} • ${new Date(item.ts).toLocaleString()}`;
-
-  const updates = Array.isArray(item.updates) ? item.updates : [];
-  let html = updates.map(u => `
-    <div class="note">
-      ${escapeHtml(u.text)}<br>
-      <small>${new Date(u.ts).toLocaleString()}</small>
-    </div>`).join("");
-
-  html += `
-    <textarea id="newOutcomeUpdate" placeholder="Add a note or update…" style="width:100%;margin-top:8px"></textarea>
-    <div style="margin-top:8px">
-      <button onclick="addOutcomeUpdate()">Add Note</button>
-    </div>`;
-
-  paneBody.innerHTML = html;
-}
-
-function addOutcomeUpdate(){
-  const m = activeOutcomeMeeting;
-  if (!m || !activeOutcomeType || !activeOutcomeId) return;
-  const textarea = document.getElementById("newOutcomeUpdate");
-  if (!textarea) return;
-  const text = textarea.value.trim();
-  if (!text) return;
-
-  let item;
-  if (activeOutcomeType === "decision")       item = m.decisions.find(x => x.id === activeOutcomeId);
-  else if (activeOutcomeType === "question")  item = m.questions.find(x => x.id === activeOutcomeId);
-  else if (activeOutcomeType === "risk")      item = m.risks.find(x => x.id === activeOutcomeId);
-  else if (activeOutcomeType === "task_candidate") item = m.task_candidates.find(x => x.id === activeOutcomeId);
-  if (!item) return;
-
-  if (!Array.isArray(item.updates)) item.updates = [];
-  item.updates.push({ text, ts: new Date().toISOString() });
-  saveDB();
-  renderOutcomePane();
-  notify("Note added", "success", 2000);
-}
-
-if (hasPassword() && isLocked()) {
-  lockApp();
-}
-
-document.addEventListener("DOMContentLoaded", async () => {
-  if (hasPassword()) {
-    lockApp();          // 🔒 force lock
-    await promptUnlock(); // 🔑 ask password
-  } else {
-    unlockApp();        // no password → free access
-  }
-});
-</script>
-<!-- ===== APP LOCK SCREEN ===== -->
-<div id="lockScreen" style="
-  position:fixed;
-  inset:0;
-  background:#0f1115;
-  color:#fff;
-  align-items:center;
-  justify-content:center;
-  z-index:99999;
-">
-  <div style="background:#171a21;padding:24px;border-radius:12px;width:320px">
-    <h3>🔒 Locked</h3>
-    <p style="color:#9aa1ac">Enter password to continue</p>
-    <input id="lockPassword" type="password" style="width:100%;padding:8px"
-      onkeydown="if(event.key==='Enter')promptUnlock()">
-    <button style="margin-top:12px;width:100%" onclick="promptUnlock()">Unlock</button>
-    <p id="lockError" style="color:#dc2626;font-size:12px"></p>
   </div>
 </div>
 
