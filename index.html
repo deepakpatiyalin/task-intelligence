@@ -373,6 +373,71 @@ body.right-pane-open #content {
   cursor: pointer;
 }
 
+/* ===== Focus Today Cards ===== */
+.focus-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--card);
+  font-size: 13px;
+}
+.focus-card.overdue {
+  border-left: 4px solid #dc2626;
+  background: var(--over);
+}
+.focus-card-body {
+  flex: 1;
+  cursor: pointer;
+  min-width: 0;
+}
+.focus-card-body:hover .focus-card-title {
+  text-decoration: underline;
+}
+.focus-card-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.focus-card-meta {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.focus-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.focus-card-actions button.icon {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 7px;
+  font-size: 13px;
+  background: var(--bg);
+  cursor: pointer;
+  color: var(--fg);
+  transition: background .15s;
+}
+.focus-card-actions button.icon:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.focus-empty {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: italic;
+  padding: 6px 0;
+}
+
 /* ===== Outcome Toggle Switch ===== */
 .toggle {
   position: relative;
@@ -4013,71 +4078,96 @@ const m = db.meetings.find(x => x.name === meetingName && !x.archived);
 function renderFocusToday() {
   const today = new Date();
   today.setHours(0,0,0,0);
-
   const tomorrow = new Date(today);
   tomorrow.setDate(today.getDate() + 1);
 
   const overdueTasks = db.tasks.filter(t =>
-    t.status !== "Closed" &&
-    t.due &&
-    new Date(t.due) < today
+    t.status !== "Closed" && t.due && new Date(t.due) < today
   );
-
   const upcomingTasks = db.tasks.filter(t =>
-    t.status !== "Closed" &&
-    t.due &&
+    t.status !== "Closed" && t.due &&
     (new Date(t.due).getTime() === today.getTime() ||
      new Date(t.due).getTime() === tomorrow.getTime())
   );
-
-  const unreadQuestions = [];
+  const openQuestions = [];
   db.meetings.forEach(m => {
     (m.questions || []).forEach(q => {
-      if (!q.read) {
-        unreadQuestions.push({
-          meeting: m.name,
-          question: q
-        });
-      }
+      if (!q.resolved) openQuestions.push({ meeting: m.name, question: q });
     });
   });
 
+  const taskCard = (t, cardClass) => `
+    <div class="focus-card ${cardClass}">
+      <div class="focus-card-body" onclick="openTaskPane('${t.id}')">
+        <div class="focus-card-title">${escapeHtml(t.title)}</div>
+        <div class="focus-card-meta">Due ${escapeHtml(t.due)} · ${escapeHtml(t.origin)}</div>
+      </div>
+      <div class="focus-card-actions">
+        <button class="icon" title="Mark closed" onclick="event.stopPropagation();focusQuickClose('${t.id}')">✔</button>
+        <button class="icon" title="Postpone +3 days" onclick="event.stopPropagation();focusPostpone('${t.id}')">🕒</button>
+        <button class="icon" title="In Progress" onclick="event.stopPropagation();focusSetStatus('${t.id}','In-Progress')">▶</button>
+        <button class="icon" title="Add note" onclick="event.stopPropagation();openTaskPane('${t.id}')">💬</button>
+      </div>
+    </div>`;
+
+  const questionCard = (u) => `
+    <div class="focus-card">
+      <div class="focus-card-body" onclick="openMeetingOutcomes('${escapeHtml(u.meeting)}')">
+        <div class="focus-card-title">${escapeHtml(u.question.text)}</div>
+        <div class="focus-card-meta">${escapeHtml(u.meeting)}${u.question.answer ? ` · 💡 ${escapeHtml(u.question.answer.slice(0,80))}…` : ""}</div>
+      </div>
+      <div class="focus-card-actions">
+        <button class="icon" title="Mark answered" onclick="event.stopPropagation();markResolved('${escapeHtml(u.meeting)}','question','${u.question.id}');renderFocusToday()">✔</button>
+        <button class="icon" title="Open meeting" onclick="event.stopPropagation();setView('meeting','${escapeHtml(u.meeting)}')">→</button>
+      </div>
+    </div>`;
+
   content.innerHTML = `
-    <h2>🧭 Focus Today</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+      <h2 style="margin:0">🧭 Focus Today</h2>
+      <button onclick="openNewTaskModal()" style="font-size:13px;padding:6px 12px">➕ New Task</button>
+    </div>
 
-    <h3>🔴 Overdue Tasks</h3>
-    ${overdueTasks.length
-      ? overdueTasks.map(t => `
-          <div class="note overdue"
-            onclick="openTaskPane('${t.id}')">
-            ${escapeHtml(t.title)}
-            <br><small>Due: ${escapeHtml(t.due)} · ${escapeHtml(t.origin)}</small>
-          </div>
-        `).join("")
-      : "<em>No overdue tasks 🎉</em>"}
+    <h3 style="color:#dc2626;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px">
+      🔴 Overdue <span style="font-weight:400;color:var(--muted)">(${overdueTasks.length})</span>
+    </h3>
+    <div style="margin-bottom:20px">
+      ${overdueTasks.length ? overdueTasks.map(t => taskCard(t, "overdue")).join("") : '<div class="focus-empty">No overdue tasks 🎉</div>'}
+    </div>
 
-    <h3>🟠 Due Today / Tomorrow</h3>
-    ${upcomingTasks.length
-      ? upcomingTasks.map(t => `
-          <div class="note"
-            onclick="openTaskPane('${t.id}')">
-            ${escapeHtml(t.title)}
-            <br><small>Due: ${escapeHtml(t.due)} · ${escapeHtml(t.origin)}</small>
-          </div>
-        `).join("")
-      : "<em>No upcoming deadlines</em>"}
+    <h3 style="color:#d97706;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px">
+      🟠 Due Today / Tomorrow <span style="font-weight:400;color:var(--muted)">(${upcomingTasks.length})</span>
+    </h3>
+    <div style="margin-bottom:20px">
+      ${upcomingTasks.length ? upcomingTasks.map(t => taskCard(t, "")).join("") : '<div class="focus-empty">No upcoming deadlines</div>'}
+    </div>
 
-    <h3>❓ Unread Questions</h3>
-    ${unreadQuestions.length
-      ? unreadQuestions.map(u => `
-          <div class="note unread"
-            onclick="openMeetingOutcomes('${u.meeting}')">
-            ${escapeHtml(u.question.text)}
-            <br><small>${escapeHtml(u.meeting)} · ${escapeHtml(u.question.ts)}</small>
-          </div>
-        `).join("")
-      : "<em>No open questions</em>"}
+    <h3 style="color:#7c3aed;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px">
+      ❓ Open Questions <span style="font-weight:400;color:var(--muted)">(${openQuestions.length})</span>
+    </h3>
+    <div>
+      ${openQuestions.length ? openQuestions.map(u => questionCard(u)).join("") : '<div class="focus-empty">No open questions</div>'}
+    </div>
   `;
+}
+
+function focusQuickClose(taskId){
+  quickCloseTask(taskId);
+  renderFocusToday();
+}
+
+function focusPostpone(taskId){
+  quickPostponeTask(taskId);
+  renderFocusToday();
+}
+
+function focusSetStatus(taskId, status){
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  t.status = status;
+  saveDB();
+  renderFocusToday();
+  notify(`Marked ${status}`, "success", 2000);
 }
 
 function isMeetingActive(meetingName) {
