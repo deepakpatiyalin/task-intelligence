@@ -168,34 +168,55 @@ aside{
 }
 .sidebar-toggle{
   cursor:pointer;
-  margin-bottom:8px;
-  font-size:14px;
+  margin-bottom:12px;
+  font-size:18px;
+  padding:6px 8px;
+  border-radius:6px;
+  color:var(--muted);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:32px;
 }
+.sidebar-toggle:hover{ background:var(--border); color:var(--fg); }
+
 aside .label{display:inline}
 main.collapsed aside .label{display:none}
 
 aside h3{
-  font-size:12px;
+  font-size:10px;
   color:var(--muted);
-  margin-top:16px;
-  font-weight:600;
+  margin:20px 0 4px 6px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
 }
 aside .item{
   font-size:14px;
-  padding:6px;
-  border-radius:4px;
+  padding:8px 10px;
+  border-radius:6px;
   cursor:pointer;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:1px;
+  color:var(--fg);
 }
 aside .item.inactive {
-  opacity: 0.4;
+  opacity: 0.45;
 }
-
 aside .item.inactive:hover {
-  opacity: 0.7;
+  opacity: 0.75;
 }
-aside .item.active,
 aside .item:hover{
   background:var(--border);
+}
+aside .item.active{
+  background:color-mix(in srgb, var(--accent) 12%, transparent);
+  color:var(--accent);
+  font-weight:600;
+  border-left:3px solid var(--accent);
+  padding-left:7px;
 }
 
 /* ================= CONTENT ================= */
@@ -442,7 +463,13 @@ body.right-pane-open #content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.page-header h2 {
+  margin: 0;
+  font-size: 18px;
 }
 
 .meeting-list {
@@ -1379,17 +1406,16 @@ td[contenteditable]:focus {
 
 <!-- ================= HEADER ================= -->
 <header>
-  <strong>🧠 Task Intelligence</strong>
- <small style="margin-left:8px;color:var(--muted)">v3.3</small>
+  <div style="display:flex;align-items:center;gap:8px">
+    <strong style="font-size:15px">🧠 Task Intelligence</strong>
     <div id="headerScorecard"></div>
   </div>
-  <div>
+  <div style="display:flex;align-items:center;gap:6px">
     <button id="btnNewTask">➕ New Task</button>
-    <button class="secondary" id="btnExport">⬇ Export</button>
-    <button class="secondary" id="btnImport">⬆ Import</button>
-    <button class="secondary" id="btnTheme">🌙</button>
-    <button onclick="handleSetPassword()">🔑 Set Password</button>
-	<button onclick="handleRemovePassword()">🗑 Remove Password</button>
+    <button class="secondary" id="btnExport" title="Export data">⬇</button>
+    <button class="secondary" id="btnImport" title="Import data">⬆</button>
+    <button class="secondary" id="btnTheme" title="Toggle theme">🌙</button>
+    <button class="secondary" title="Settings" onclick="setView('admin')" style="font-size:16px;padding:6px 10px">⚙</button>
   </div>
 </header>
 
@@ -1405,9 +1431,9 @@ td[contenteditable]:focus {
   <h3 id="paneTitle"></h3>
   <small id="paneMeta"></small>
   <div class="pane-actions" id="paneMomActions">
-    <button class="secondary" onclick="generateMOM('latest')">📝 MOM (Latest)</button>
-    <button class="secondary" onclick="generatePreMeetingBrief()">📋 Pre-Meeting Brief</button>
-    <button class="secondary" onclick="openRetroSummary()">🧠 AI Retro</button>
+    <button class="secondary" onclick="generateMOM('latest')" title="Generate Minutes of Meeting for the latest session">📝 Minutes</button>
+    <button class="secondary" onclick="generatePreMeetingBrief()" title="What was discussed, what's pending, blockers and key questions for next meeting">📋 Pre-Meeting Brief</button>
+    <button class="secondary" onclick="openRetroSummary()" title="AI summary of all sessions for this meeting — shareable with stakeholders">🧠 Retro Summary</button>
   </div>
   <hr>
   <div id="paneBody"></div>
@@ -1431,22 +1457,30 @@ td[contenteditable]:focus {
 
 <!-- ================= TASK MODAL ================= -->
 <div class="modal" id="taskModal">
-  <div class="modal-content">
-    <h3>New Task</h3>
-    <input id="tTitle" placeholder="Task title" style="min-width:500px"><br>
-    <input id="tTags" placeholder="Tags (comma separated)" style="min-width:500px"><br>
-        <select id="tMeeting"></select><input id="tDue" type="date"><br>
-    <label style="font-size:13px">Recurrence:
-      <select id="tRecur">
-        <option value="none">None</option>
-        <option value="daily">Daily</option>
-        <option value="weekly">Weekly</option>
-        <option value="monthly">Monthly</option>
-      </select>
-    </label><br>
-    <div class="error" id="taskError"></div><br>
-    <button id="btnSaveTask">Save</button>
-    <button class="secondary" id="btnCancelTask">Cancel</button>
+  <div class="modal-content" style="width:480px;max-width:95vw">
+    <h3 style="margin:0 0 16px">New Task</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <input id="tTitle" placeholder="Task title" style="width:100%">
+      <input id="tTags" placeholder="Tags (comma separated)" style="width:100%">
+      <div style="display:flex;gap:8px">
+        <select id="tMeeting" style="flex:1"></select>
+        <input id="tDue" type="date" style="flex:1">
+      </div>
+      <label style="font-size:13px;display:flex;align-items:center;gap:8px">
+        Recurrence:
+        <select id="tRecur" style="flex:1">
+          <option value="none">None</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+    </div>
+    <div class="error" id="taskError" style="margin-top:8px"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button id="btnSaveTask">Save Task</button>
+      <button class="secondary" id="btnCancelTask">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -1946,84 +1980,60 @@ function toggleSidebar() {
 
 function renderSidebar() {
   const collapsed = main.classList.contains("collapsed");
+  const od = overdueCount();
   sidebar.innerHTML = `
-    <div class="sidebar-toggle" onclick="toggleSidebar()">
-      ${collapsed ? "→" : "←"}
+    <div class="sidebar-toggle" onclick="toggleSidebar()" title="${collapsed ? "Expand" : "Collapse"} sidebar">
+      ${collapsed ? "☰" : "✕"}
     </div>
 
-    <div class="item ${view.type==="focus"?"active":""}"
-     onclick="setView('focus')" title="Focus Today">
-  🧭 <span class="label">Focus Today</span>
-     </div>
+    <h3 class="label">Overview</h3>
+    <div class="item ${view.type==="focus"?"active":""}" onclick="setView('focus')" title="Focus Today">
+      🧭 <span class="label">Focus Today</span>
+    </div>
+    <div class="item ${view.type==="weekly"?"active":""}" onclick="setView('weekly')" title="Weekly Summary">
+      🧾 <span class="label">Weekly Summary</span>
+    </div>
 
-	<div class="item ${view.type==="weekly"?"active":""}"
-     onclick="setView('weekly')" title="Weekly Summary">
-  🧾 <span class="label">Weekly Summary</span>
-	</div>
-
-    <div class="item ${view.type==="all"?"active":""}"
-         onclick="setView('all')" title="All Tasks">
+    <h3 class="label">Tasks</h3>
+    <div class="item ${view.type==="all"?"active":""}" onclick="setView('all')" title="All Tasks">
       📋 <span class="label">All Tasks</span>
-      ${overdueCount() ? `<span class="badge">${overdueCount()}</span>` : ""}
+      ${od ? `<span class="badge" style="margin-left:auto">${od}</span>` : ""}
     </div>
-
-    <div class="item ${view.type==="kanban"?"active":""}"
-         onclick="setView('kanban')" title="Kanban">
+    <div class="item ${view.type==="kanban"?"active":""}" onclick="setView('kanban')" title="Kanban Board">
       🗂 <span class="label">Kanban</span>
     </div>
-
-    <div class="item ${view.type==="analytics"?"active":""}"
-         onclick="setView('analytics')" title="Analytics">
+    <div class="item ${view.type==="analytics"?"active":""}" onclick="setView('analytics')" title="Analytics">
       📊 <span class="label">Analytics</span>
     </div>
 
-
-<div class="item ${view.type==="announcements"?"active":""}"
-     onclick="setView('announcements')" title="Announcements">
-  📢 <span class="label">Announcements</span>
-</div>
-
-<div class="item ${view.type==="oneonone"?"active":""}"
-     onclick="setView('oneonone')" title="1-1 Workspace">
-  👥 <span class="label">1-1 Workspace</span>
-</div>
-
-
-<div class="item"
-     onclick="generateDailyHandoff()" title="Daily Handoff">
-  🔄 <span class="label">Daily Handoff</span>
-</div>
+    <h3 class="label">People</h3>
+    <div class="item ${view.type==="oneonone"?"active":""}" onclick="setView('oneonone')" title="1-1 Workspace">
+      👥 <span class="label">1-1 Workspace</span>
+    </div>
+    <div class="item ${view.type==="announcements"?"active":""}" onclick="setView('announcements')" title="Announcements">
+      📢 <span class="label">Announcements</span>
+    </div>
 
     <h3 class="label">Meetings</h3>
+    ${db.meetings.filter(m => !m.archived).map(m => {
+      const active = isMeetingActive(m.name);
+      const openCount = db.tasks.filter(t => t.origin === m.name && t.status !== "Closed").length;
+      return `
+        <div class="item ${view.type==="meeting" && view.value===m.name ? "active":""} ${!active ? "inactive" : ""}"
+          onclick="setView('meeting','${m.name}')" title="${m.name}">
+          <span class="health-dot ${getMeetingHealth(m.name)}"></span>
+          <span class="label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</span>
+          ${openCount > 0 ? `<span class="badge-muted">${openCount}</span>` : ""}
+        </div>`;
+    }).join("")}
 
-${db.meetings
-  .filter(m => !m.archived)
-  .map(m => {
-
-  const active = isMeetingActive(m.name);
-  const openCount = db.tasks.filter(t => t.origin === m.name && t.status !== "Closed").length;
-
-  return `
-    <div class="item
-      ${view.type==="meeting" && view.value===m.name ? "active":""}
-      ${!active ? "inactive" : ""}"
-      onclick="setView('meeting','${m.name}')"
-      title="${m.name}">
-
-      📅 <span class="health-dot ${getMeetingHealth(m.name)}"></span>
-      <span class="label">${m.name}</span>
-      ${openCount > 0 ? `<span class="badge-muted" style="margin-left:auto">${openCount}</span>` : ""}
-
+    <h3 class="label">Tools</h3>
+    <div class="item" onclick="generateDailyHandoff()" title="Generate today's handoff report">
+      🔄 <span class="label">Daily Handoff</span>
     </div>
-  `;
-}).join("")}
-
-    <h3 class="label">Admin</h3>
-    <div class="item ${view.type==="admin"?"active":""}"
-         onclick="setView('admin')" title="Manage Meetings">
-      ⚙ <span class="label">Manage Meetings</span>
+    <div class="item ${view.type==="admin"?"active":""}" onclick="setView('admin')" title="Manage Meetings & Settings">
+      ⚙ <span class="label">Settings</span>
     </div>
-
   `;
 }
 
@@ -3235,7 +3245,7 @@ console.log("renderAdmin v2 (with search + archive)");
 
   content.innerHTML = `
     <div class="page-header">
-      <h2>Manage Meetings</h2>
+      <h2>⚙ Settings & Meetings</h2>
 
       <div style="display:flex;gap:8px;align-items:center">
       <input
@@ -3274,6 +3284,28 @@ console.log("renderAdmin v2 (with search + archive)");
         <a href="https://console.anthropic.com" target="_blank" style="color:var(--accent)">console.anthropic.com</a>.
         Once saved, transcripts are analyzed automatically — no copy-paste needed.
       </p>
+    </div>
+
+    <div style="margin-bottom:24px;padding:16px;background:var(--card);border-radius:10px;border:1px solid var(--border)">
+      <h3 style="margin:0 0 12px;font-size:14px">🔒 App Password</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="handleSetPassword()">🔑 ${localStorage.getItem('appPwdHash') ? 'Change' : 'Set'} Password</button>
+        ${localStorage.getItem('appPwdHash') ? `<button class="secondary danger" onclick="handleRemovePassword()">🗑 Remove Password</button>` : ''}
+      </div>
+      <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">
+        ${localStorage.getItem('appPwdHash')
+          ? '✅ Password is set. App locks after 5 minutes of inactivity.'
+          : 'No password set. Anyone with access to this browser can open the app.'}
+      </p>
+    </div>
+
+    <div style="margin-bottom:24px;padding:16px;background:var(--card);border-radius:10px;border:1px solid var(--border)">
+      <h3 style="margin:0 0 12px;font-size:14px">📦 Data</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="secondary" id="adminBtnExport">⬇ Export Data</button>
+        <button class="secondary" id="adminBtnImport">⬆ Import Data</button>
+      </div>
+      <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">Export a full JSON backup of all your tasks, meetings, and outcomes.</p>
     </div>
 
     <div class="meeting-list">
@@ -5165,6 +5197,12 @@ btnTheme.onclick = () => {
 };
 btnExport.onclick = exportData;
 btnImport.onclick = () => importFile.click();
+
+// Wire up admin page export/import buttons (rendered dynamically)
+document.addEventListener("click", e => {
+  if (e.target.id === "adminBtnExport") exportData();
+  if (e.target.id === "adminBtnImport") importFile.click();
+});
 
 function getDateTimestamp(){
   const d = new Date();
