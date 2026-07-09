@@ -1641,43 +1641,47 @@ function handleSetPassword(){
 
 async function promptUnlock(){
   const stored = localStorage.getItem(PWD_KEY);
-  if (!stored) return unlockApp();
+  if (!stored) { unlockApp(); return; }
 
   const pwdInput = getPwdInput();
   const lockError = getLockError();
   if (!pwdInput) return;
-  const pwd = pwdInput.value;
-  if (!pwd) return;
+  const pwd = pwdInput.value.trim();
+  if (!pwd) { if (lockError) lockError.textContent = "Enter your password"; return; }
+  if (lockError) lockError.textContent = "";
 
-  let storedObj;
-  try { storedObj = JSON.parse(stored); }
-  catch { storedObj = null; }
+  try {
+    let match = false;
+    let storedObj;
+    try { storedObj = JSON.parse(stored); } catch { storedObj = null; }
 
-  let match = false;
-  if (storedObj && storedObj.salt){
-    const { hash: h } = await hash(pwd, storedObj.salt);
-    match = (h === storedObj.hash);
-  } else {
-    // legacy plain SHA-256 fallback
-    const enc = new TextEncoder().encode(pwd);
-    const buf = await crypto.subtle.digest("SHA-256", enc);
-    match = (bytesToHex(buf) === stored);
-    if (match){
-      // upgrade to PBKDF2 transparently
-      const upgraded = await hash(pwd);
-      localStorage.setItem(PWD_KEY, JSON.stringify(upgraded));
+    if (storedObj && storedObj.salt) {
+      const result = await hash(pwd, storedObj.salt);
+      match = (result.hash === storedObj.hash);
+    } else {
+      // legacy plain SHA-256 fallback
+      const enc = new TextEncoder().encode(pwd);
+      const buf = await crypto.subtle.digest("SHA-256", enc);
+      match = (bytesToHex(buf) === stored);
+      if (match) {
+        const upgraded = await hash(pwd);
+        localStorage.setItem(PWD_KEY, JSON.stringify(upgraded));
+      }
     }
-  }
 
-  if (match){
-    pwdInput.value = "";
-    if (lockError) lockError.textContent = "";
-    unlockApp();
-    resetInactivityTimer();
-  } else {
-    if (lockError) lockError.textContent = "Incorrect password";
-    pwdInput.value = "";
-    pwdInput.focus();
+    if (match) {
+      pwdInput.value = "";
+      if (lockError) lockError.textContent = "";
+      unlockApp();
+      resetInactivityTimer();
+    } else {
+      if (lockError) lockError.textContent = "Incorrect password — try again";
+      pwdInput.value = "";
+      pwdInput.focus();
+    }
+  } catch(err) {
+    console.error("Unlock error:", err);
+    if (lockError) lockError.textContent = "Error during unlock: " + err.message;
   }
 }
 
@@ -6591,6 +6595,12 @@ document.addEventListener("DOMContentLoaded", () => {
       onkeydown="if(event.key==='Enter')promptUnlock()">
     <button style="margin-top:10px;width:100%;padding:10px" onclick="promptUnlock()">Unlock</button>
     <p id="lockError" style="color:#dc2626;font-size:12px;margin:8px 0 0;min-height:18px"></p>
+    <p style="margin-top:12px">
+      <a href="#" style="font-size:11px;color:#6b7280;text-decoration:none"
+        onclick="event.preventDefault();if(confirm('This will remove your password and unlock the app. Your data is safe. Continue?')){localStorage.removeItem('appPwdHash');localStorage.removeItem('appLocked');location.reload();}">
+        Forgot password? Reset access
+      </a>
+    </p>
   </div>
 </div>
 
