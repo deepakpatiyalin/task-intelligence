@@ -1617,13 +1617,40 @@ function getLockError(){ return document.getElementById("lockError"); }
 function hasPassword(){ return !!localStorage.getItem(PWD_KEY); }
 function isLocked(){ return localStorage.getItem(LOCK_KEY) === "1"; }
 
+const MAINTENANCE_KEY = "maintenanceUntil";
+const MAINTENANCE_MINUTES = 10;
+
+function isMaintenanceActive(){
+  const until = parseInt(localStorage.getItem(MAINTENANCE_KEY) || "0", 10);
+  return Date.now() < until;
+}
+
+function enableMaintenance(){
+  const until = Date.now() + MAINTENANCE_MINUTES * 60 * 1000;
+  localStorage.setItem(MAINTENANCE_KEY, String(until));
+  unlockApp();
+  notify(`🔧 Maintenance mode on — password skipped for ${MAINTENANCE_MINUTES} min`, "success", 5000);
+  renderAdmin();
+}
+
+function disableMaintenance(){
+  localStorage.removeItem(MAINTENANCE_KEY);
+  notify("🔒 Maintenance mode off — password required on next load", "info", 4000);
+  renderAdmin();
+}
+
+function toggleMaintenance(){
+  if (isMaintenanceActive()) disableMaintenance();
+  else enableMaintenance();
+}
+
 ["click","keydown","mousemove","touchstart","scroll"].forEach(evt =>
   document.addEventListener(evt, resetInactivityTimer, { passive:true })
 );
 
 function resetInactivityTimer(){
   clearTimeout(inactivityTimer);
-  if (!hasPassword() || isLocked()) return;
+  if (!hasPassword() || isLocked() || isMaintenanceActive()) return;
   inactivityTimer = setTimeout(() => {
     lockApp();
     notify("App locked due to inactivity", "warn", 4000);
@@ -3297,6 +3324,33 @@ console.log("renderAdmin v2 (with search + archive)");
           ? '✅ Password is set. App locks after 5 minutes of inactivity.'
           : 'No password set. Anyone with access to this browser can open the app.'}
       </p>
+      ${localStorage.getItem('appPwdHash') ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:13px;font-weight:600">🔧 Maintenance Mode</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            ${isMaintenanceActive()
+              ? '⏱ Active — password skipped until ' + new Date(parseInt(localStorage.getItem('maintenanceUntil'))).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+              : 'When on, skips password for 10 min on load/refresh'}
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
+          <span style="font-size:13px;color:var(--muted)">${isMaintenanceActive() ? 'On' : 'Off'}</span>
+          <div onclick="toggleMaintenance()" style="
+            width:44px;height:24px;border-radius:12px;cursor:pointer;
+            background:${isMaintenanceActive() ? 'var(--accent)' : 'var(--border)'};
+            position:relative;transition:background 0.2s
+          ">
+            <div style="
+              position:absolute;top:3px;
+              left:${isMaintenanceActive() ? '22px' : '3px'};
+              width:18px;height:18px;border-radius:50%;
+              background:#fff;transition:left 0.2s;
+              box-shadow:0 1px 3px rgba(0,0,0,0.2)
+            "></div>
+          </div>
+        </label>
+      </div>` : ''}
     </div>
 
     <div style="margin-bottom:24px;padding:16px;background:var(--card);border-radius:10px;border:1px solid var(--border)">
@@ -6613,9 +6667,9 @@ function addOutcomeUpdate(){
   notify("Note added", "success", 2000);
 }
 
-// On every page load: if password is set, always lock first
+// On every page load: lock unless maintenance mode is active
 document.addEventListener("DOMContentLoaded", () => {
-  if (hasPassword()) {
+  if (hasPassword() && !isMaintenanceActive()) {
     lockApp();
   } else {
     unlockApp();
