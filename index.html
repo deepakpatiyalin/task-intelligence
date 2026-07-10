@@ -1727,6 +1727,10 @@ let db = JSON.parse(localStorage.getItem("taskDB")) || {};
 db.tasks = Array.isArray(db.tasks) ? db.tasks : [];
 db.meetings = Array.isArray(db.meetings) ? db.meetings : [];
 
+function saveDB() {
+  localStorage.setItem("taskDB", JSON.stringify(db));
+}
+
 
 
 if (!Array.isArray(db.announcements)) {
@@ -4396,22 +4400,35 @@ function renderFocusToday() {
 }
 
 function focusQuickClose(taskId){
-  quickCloseTask(taskId);
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  t.status = "Closed";
+  t.updated = new Date().toISOString();
+  saveDB();
   renderFocusToday();
+  notify("Task closed", "success", 2000);
 }
 
 function focusPostpone(taskId){
-  quickPostponeTask(taskId);
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  const base = t.due ? new Date(t.due) : new Date();
+  base.setDate(base.getDate() + 3);
+  t.due = base.toISOString().slice(0, 10);
+  t.updated = new Date().toISOString();
+  saveDB();
   renderFocusToday();
+  notify("Postponed +3 days", "success", 2000);
 }
 
 function focusSetStatus(taskId, status){
   const t = db.tasks.find(x => x.id === taskId);
   if (!t) return;
   t.status = status;
+  t.updated = new Date().toISOString();
   saveDB();
   renderFocusToday();
-  notify(`Marked ${status}`, "success", 2000);
+  notify("Marked " + status, "success", 2000);
 }
 
 function isMeetingActive(meetingName) {
@@ -5485,7 +5502,9 @@ let collapsedOutcomeDates = {};
 let outcomeTypeFilter = "all"; // all | decision | question
 
 function formatDateGroup(ts){
+  if (!ts) return "Older Records";
   const d = new Date(ts);
+  if (isNaN(d.getTime())) return "Older Records";
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
@@ -5518,6 +5537,9 @@ function openMeetingOutcomes(name){
   // ✅ CLEAR any previously selected outcome
   activeOutcomeType = null;
   activeOutcomeId = null;
+
+  // Reset collapse state so groups render expanded on fresh open
+  collapsedOutcomeDates = {};
 
   paneTitle.textContent = `Outcomes – ${name}`;
   paneMeta.textContent  = "Decisions & Questions";
@@ -5607,6 +5629,11 @@ function renderMeetingOutcomes(){
     ...(m.task_candidates || []).map(t => ({ ...t, _type: "task_candidate" }))
   ];
 
+  if (combined.length === 0) {
+    paneBody.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:16px;text-align:center">No outcomes recorded yet for this meeting.</div>`;
+    return;
+  }
+
   // 2️⃣ Filter by type
   if (outcomeTypeFilter !== "all") {
     combined = combined.filter(i => i._type === outcomeTypeFilter);
@@ -5636,11 +5663,12 @@ function renderMeetingOutcomes(){
   `;
 
   // 5️⃣ Render groups
-  Object.entries(groups).forEach(([date, items]) => {
+  const dateKeys = Object.keys(groups);
+  Object.entries(groups).forEach(([date, items], idx) => {
 
-    // Default collapsed
+    // First two groups expanded by default, older ones collapsed
     if (collapsedOutcomeDates[date] === undefined) {
-      collapsedOutcomeDates[date] = true;
+      collapsedOutcomeDates[date] = idx >= 2;
     }
 
     html += `
