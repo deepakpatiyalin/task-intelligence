@@ -5226,15 +5226,18 @@ function toggleOutcomeRead(type, meetingName, id){
   item.read = !item.read;
 
   saveDB();
-  renderMeetingOutcomes();
 
-  // 🎯 Visual feedback
-  requestAnimationFrame(() => {
-    const el = document.querySelector(
-      `.note[data-outcome-id="${id}"]`
-    );
-    if (el) el.classList.add("outcome-just-updated");
-  });
+  // 🎯 Update the note in place — a full re-render would reset the pane scroll
+  const el = document.querySelector(`.note[data-outcome-id="${id}"]`);
+  if (el) {
+    el.classList.toggle("read", item.read);
+    el.classList.toggle("unread", !item.read);
+    const cb = el.querySelector(".toggle input[type=checkbox]");
+    if (cb) cb.checked = item.read;
+    el.classList.add("outcome-just-updated");
+  } else {
+    renderMeetingOutcomes();
+  }
 }
 
 function promptLinkTask(meetingName, decisionId){
