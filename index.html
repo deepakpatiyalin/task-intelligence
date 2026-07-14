@@ -5765,7 +5765,10 @@ if (item._type === "risk") {
     html += `</div>`;
   });
 
+  // Preserve scroll position across the re-render
+  const prevScroll = paneBody.scrollTop;
   paneBody.innerHTML = html;
+  paneBody.scrollTop = prevScroll;
 }
 
 function markResolved(meetingName, type, id){
