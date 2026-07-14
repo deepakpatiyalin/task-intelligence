@@ -1711,7 +1711,7 @@ let activeOutcomeId = null;
 const expandedAnnouncements = {};
 const ANNOUNCEMENT_PREVIEW_LENGTH = 300;
 const aiModal = document.getElementById("aiModal");
-const aiText = document.getElementById("aiText");
+let aiText = document.getElementById("aiText");
 const aiPreview = document.getElementById("aiPreview");
 const btnParseAI = document.getElementById("btnParseAI");
 const btnCloseAI = document.getElementById("btnCloseAI");
@@ -5023,7 +5023,9 @@ function restoreAIModal() {
   if (_aiModalOriginalHTML) {
     const modal = document.getElementById("aiModal");
     modal.querySelector(".modal-content").innerHTML = _aiModalOriginalHTML;
-    // Re-wire buttons
+    // Re-wire buttons and re-capture the freshly created textarea —
+    // the old element reference is dead after innerHTML replacement
+    aiText = document.getElementById("aiText");
     document.getElementById("btnParseAI").onclick = parseAIReview;
     document.getElementById("btnCloseAI").onclick = closeAI;
   }
