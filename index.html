@@ -5697,7 +5697,8 @@ function renderMeetingOutcomes(){
                data-outcome-id="${item.id}"
                onclick="openOutcomeItem('${m.name}','${item._type}','${item.id}')">
 
-            <label class="toggle" title="Mark read / unread">
+            <label class="toggle" title="Mark read / unread"
+                   onclick="event.stopPropagation()">
               <input type="checkbox"
                 ${item.read ? "checked" : ""}
                 onclick="event.stopPropagation();
