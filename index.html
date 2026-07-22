@@ -2536,8 +2536,12 @@ function generatePreMeetingBrief(meetingName){
   const sortedDates = [...new Set(allDates)].sort();
   const lastDate = sortedDates[sortedDates.length - 1] || null;
 
-  // Last session decisions
-  const lastDecisions = (m.decisions || []).filter(d => d.ts && d.ts.slice(0, 10) === lastDate);
+  // Everything captured in the last session — not just decisions
+  const fromLastSession = list => (list || []).filter(o => o.ts && o.ts.slice(0, 10) === lastDate);
+  const lastDecisions = fromLastSession(m.decisions);
+  const lastQuestions = fromLastSession(m.questions);
+  const lastRisks     = fromLastSession(m.risks);
+  const lastActions   = fromLastSession(m.task_candidates);
 
   // All non-closed tasks for this meeting
   const meetingTasks = db.tasks.filter(t => t.origin === m.name && t.status !== "Closed");
@@ -2548,60 +2552,131 @@ function generatePreMeetingBrief(meetingName){
   // Open risks (unresolved)
   const openRisks = (m.risks || []).filter(r => !r.resolved);
 
-  // Suggested talking points
+  // Split tasks by urgency
+  const overdueTasks = meetingTasks
+    .filter(t => t.due && new Date(t.due) < today)
+    .sort((a, b) => new Date(a.due) - new Date(b.due));
+  const soon = new Date(today); soon.setDate(soon.getDate() + 7);
+  const dueSoonTasks = meetingTasks
+    .filter(t => t.due && new Date(t.due) >= today && new Date(t.due) <= soon)
+    .sort((a, b) => new Date(a.due) - new Date(b.due));
+  const otherTasks = meetingTasks.filter(t => !overdueTasks.includes(t) && !dueSoonTasks.includes(t));
+
+  // Sort questions/risks oldest first — the longest-hanging items matter most
+  const sortedQs = [...openQs].sort((a, b) => new Date(a.ts || 0) - new Date(b.ts || 0));
+  const sortedRisks = [...openRisks].sort((a, b) => new Date(a.ts || 0) - new Date(b.ts || 0));
+
+  const age = ts => { const d = daysSince(ts); return d > 0 ? ` (open ${d}d)` : ""; };
+
+  // Follow-up threads: task candidates with recorded updates.
+  // Skip converted ones — they already appear in the task sections above.
+  const threads = (m.task_candidates || []).filter(tc => (tc.updates || []).length > 0 && !tc.converted);
+
+  // Specific, prioritized talking points
   const points = [];
-  if (openQs.length)    points.push(`Follow up on ${openQs.length} open question${openQs.length > 1 ? "s" : ""}`);
-  if (openRisks.length) points.push(`${openRisks.length} risk${openRisks.length > 1 ? "s need" : " needs"} status — escalate or close`);
-  const overdueTasks = meetingTasks.filter(t => t.due && new Date(t.due) < today);
-  if (overdueTasks.length) points.push(`${overdueTasks.length} overdue task${overdueTasks.length > 1 ? "s" : ""} — get status update`);
-  if (!points.length) points.push("No outstanding items — use this meeting to set new goals or review decisions");
+  if (overdueTasks.length) {
+    const worst = overdueTasks[0];
+    points.push(`Get status on "${cleanTaskText(worst.title)}" — ${daysSince(worst.due)}d overdue${overdueTasks.length > 1 ? ` (+${overdueTasks.length - 1} more overdue)` : ""}`);
+  }
+  if (sortedQs.length) {
+    const oldest = sortedQs[0];
+    points.push(`Push for an answer on "${cleanOutcomeText(oldest.text).slice(0, 70)}"${age(oldest.ts)}${sortedQs.length > 1 ? ` (+${sortedQs.length - 1} more open)` : ""}`);
+  }
+  if (sortedRisks.length) {
+    points.push(`Review ${sortedRisks.length} open risk${sortedRisks.length > 1 ? "s" : ""} — escalate, mitigate, or close`);
+  }
+  if (dueSoonTasks.length) {
+    points.push(`Confirm ${dueSoonTasks.length} task${dueSoonTasks.length > 1 ? "s" : ""} due this week ${dueSoonTasks.length > 1 ? "are" : "is"} on track`);
+  }
+  if (lastDecisions.length) {
+    points.push(`Verify last session's ${lastDecisions.length} decision${lastDecisions.length > 1 ? "s were" : " was"} acted on`);
+  }
+  if (!points.length) points.push("No outstanding items — use this meeting to set new goals or review direction");
 
   const sep = "─".repeat(52);
   const sections = [];
 
   sections.push(`📋 PRE-MEETING BRIEF — ${m.name}`);
-  sections.push(`Prepared: ${today.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}  |  Last session: ${lastDate ? fmt(lastDate + "T00:00:00Z") : "none"}`);
+  sections.push(
+    `Prepared: ${today.toLocaleDateString("en-GB", { day:"2-digit", month:"short", year:"numeric" })}` +
+    `  |  Last session: ${lastDate ? fmt(lastDate + "T00:00:00Z") : "none"}` +
+    (lastDate ? ` (${daysSince(lastDate + "T00:00:00Z")}d ago)` : "") +
+    `\nOpen: ${meetingTasks.length} task${meetingTasks.length !== 1 ? "s" : ""} (${overdueTasks.length} overdue)` +
+    `  |  ${openQs.length} question${openQs.length !== 1 ? "s" : ""}` +
+    `  |  ${openRisks.length} risk${openRisks.length !== 1 ? "s" : ""}`
+  );
   sections.push(sep);
 
-  sections.push("📌 WHAT WAS DISCUSSED LAST SESSION (Decisions)");
-  if (lastDecisions.length) {
-    sections.push(lastDecisions.map(d => `  • ${cleanOutcomeText(d.text)}`).join("\n"));
-  } else {
-    sections.push("  ✓ None");
-  }
-
-  sections.push("✅ WHAT NEEDS TO BE DONE (Open Tasks)");
-  if (meetingTasks.length) {
-    sections.push(meetingTasks.map(t => {
-      const overdue = t.due && new Date(t.due) < today
-        ? `  ← ${Math.floor((today - new Date(t.due)) / 86400000)}d overdue`
-        : "";
-      return `  • ${t.title}${t.due ? `  [due ${fmt(t.due)}]` : ""}${overdue}`;
-    }).join("\n"));
-  } else {
-    sections.push("  ✓ None");
-  }
-
-  sections.push("🔴 OPEN QUESTIONS TO RAISE");
-  if (openQs.length) {
-    sections.push(openQs.map(q => {
-      const answerLine = q.answer ? `     💡 ${q.answer}` : "     💡 — No answer yet";
-      return `  ❓ ${cleanOutcomeText(q.text)}\n${answerLine}`;
-    }).join("\n"));
-  } else {
-    sections.push("  ✓ None");
-  }
-
-  sections.push("⚠️ BLOCKERS / RISKS");
-  if (openRisks.length) {
-    sections.push(openRisks.map(r => `  • ${cleanOutcomeText(r.text)}`).join("\n"));
-  } else {
-    sections.push("  ✓ None");
-  }
-
-  sections.push(sep);
-  sections.push("💬 SUGGESTED TALKING POINTS");
+  // 1. Talking points first — the "walk in ready" list
+  sections.push("💬 TOP PRIORITIES FOR THIS SESSION");
   sections.push(points.map((p, i) => `  ${i + 1}. ${p}`).join("\n"));
+  sections.push(sep);
+
+  // 2. Overdue — the fires
+  if (overdueTasks.length) {
+    sections.push("🔴 OVERDUE — CHASE THESE");
+    sections.push(overdueTasks.map(t =>
+      `  • ${t.title}  [due ${fmt(t.due)} — ${daysSince(t.due)}d overdue]`
+    ).join("\n"));
+  }
+
+  // 3. Due this week
+  if (dueSoonTasks.length) {
+    sections.push("🟠 DUE THIS WEEK — CONFIRM ON TRACK");
+    sections.push(dueSoonTasks.map(t =>
+      `  • ${t.title}  [due ${fmt(t.due)}]${t.status === "In-Progress" ? "  (in progress)" : ""}`
+    ).join("\n"));
+  }
+
+  // 4. Open questions, oldest first with aging
+  sections.push("❓ OPEN QUESTIONS TO RAISE" + (sortedQs.length ? "  (oldest first)" : ""));
+  if (sortedQs.length) {
+    sections.push(sortedQs.map(q => {
+      const answerLine = q.answer ? `     💡 Partial: ${q.answer}` : "";
+      return `  • ${cleanOutcomeText(q.text)}${age(q.ts)}${answerLine ? "\n" + answerLine : ""}`;
+    }).join("\n"));
+  } else {
+    sections.push("  ✓ None");
+  }
+
+  // 5. Risks with aging
+  sections.push("⚠️ BLOCKERS / RISKS");
+  if (sortedRisks.length) {
+    sections.push(sortedRisks.map(r => `  • ${cleanOutcomeText(r.text)}${age(r.ts)}`).join("\n"));
+  } else {
+    sections.push("  ✓ None");
+  }
+
+  // 6. Follow-up threads with their latest update
+  if (threads.length) {
+    sections.push("🧵 FOLLOW-UP THREADS (latest update)");
+    sections.push(threads.map(tc => {
+      const latest = tc.updates[tc.updates.length - 1];
+      return `  • ${cleanOutcomeText(tc.text)}\n     ↳ ${latest.text} (${fmt(latest.ts)})`;
+    }).join("\n"));
+  }
+
+  // 7. Last session recap at the bottom — context, not action
+  sections.push(sep);
+  sections.push(`📌 LAST SESSION RECAP${lastDate ? ` (${fmt(lastDate + "T00:00:00Z")})` : ""}`);
+  const recapLines = [];
+  if (lastDecisions.length)
+    recapLines.push("  Decisions:\n" + lastDecisions.map(d => `    • ${cleanOutcomeText(d.text)}`).join("\n"));
+  if (lastActions.length)
+    recapLines.push("  Action items captured:\n" + lastActions.map(t => `    • ${cleanOutcomeText(t.text)}`).join("\n"));
+  if (lastQuestions.length)
+    recapLines.push("  Questions raised:\n" + lastQuestions.map(q => `    • ${cleanOutcomeText(q.text)}${q.resolved ? "  ✓ answered" : ""}`).join("\n"));
+  if (lastRisks.length)
+    recapLines.push("  Risks flagged:\n" + lastRisks.map(r => `    • ${cleanOutcomeText(r.text)}`).join("\n"));
+  sections.push(recapLines.length ? recapLines.join("\n") : "  ✓ Nothing recorded last session");
+
+  // 8. Remaining tasks without near-term dates
+  if (otherTasks.length) {
+    sections.push("📋 OTHER OPEN TASKS (no near-term due date)");
+    sections.push(otherTasks.map(t =>
+      `  • ${t.title}${t.due ? `  [due ${fmt(t.due)}]` : ""}  (${t.status})`
+    ).join("\n"));
+  }
 
   // open modal with a styled title
   document.querySelector("#momModal h3").textContent = "📋 Pre-Meeting Brief";
