@@ -2975,15 +2975,25 @@ function closePane() {
 
 function renderTaskUpdates() {
   const t = db.tasks.find(x=>x.id===activeTaskId);
+  if (!t) return;
+
+  // Back link to the origin meeting's outcomes thread, when one exists
+  const originMeeting = db.meetings.find(m => m.name === t.origin);
+  const backBtn = originMeeting
+    ? `<button class="secondary" style="margin-bottom:10px;font-size:12px;padding:4px 10px"
+         onclick="openMeetingOutcomes('${escapeHtml(originMeeting.name)}')">← Back to ${escapeHtml(originMeeting.name)}</button>`
+    : "";
+
   paneBody.innerHTML = `
+  ${backBtn}
   ${t.updates.map(u => `
     <div class="note">
-      ${u.text}<br>
-      <small>${u.ts}</small>
+      <div style="white-space:pre-wrap;word-break:break-word">${escapeHtml(u.text)}</div>
+      <small>${new Date(u.ts).toLocaleString()}</small>
     </div>
   `).join("")}
 
-  <textarea id="newUpdate" placeholder="Add update..."></textarea>
+  <textarea id="newUpdate" placeholder="Add update..." rows="4"></textarea>
   <div style="margin-top:8px">
     <button onclick="addUpdate()">Add Update</button>
   </div>
@@ -5111,7 +5121,8 @@ function cleanTaskText(text) {
 }
 
 function extractDueDate(text) {
-  const m = (text || "").match(/\[Due:\s*([^\]]+)\]/i);
+  // Matches both standalone [Due: ...] and combined [Owner: Name, Due: ...]
+  const m = (text || "").match(/Due:\s*([^\],]+)/i);
   if (!m) return null;
   const raw = m[1].trim();
   // Try common patterns: "15 Jan", "Jan 15", "2024-01-15"
@@ -5153,10 +5164,11 @@ function saveSelectedOutcomes(data, m, meetingDate, selected, decisions, task_ca
     if (!checked) return;
     const text = task_candidates[i];
     m.task_candidates.push({ id: crypto.randomUUID(), text, ts: now(), read: false, converted: false, updates: [] });
+    const owner = extractOwnerTagsFromText(text);
     db.tasks.push({
       id: crypto.randomUUID(),
       title: cleanTaskText(text),
-      tags: [],
+      tags: owner ? [owner] : [],
       status: "Not Started",
       due: extractDueDate(text) || "",
       created: meetingDate,
@@ -5457,20 +5469,32 @@ function datePlusDays(days){
 function extractOwnerTagsFromText(text){
   if (!text) return null;
 
-  // 1️⃣ Look for (Name) anywhere
-  let match = text.match(/\(([^()]{2,50})\)/);
-  if (!match) return null;
+  let owner = null;
 
-  let owner = match[1].trim();
+  // 1️⃣ Current AI format: [Owner: Name, Due: ...] or [Owner: Name]
+  let match = text.match(/\[Owner:\s*([^\],]+)/i);
+  if (match) {
+    owner = match[1].trim();
+  } else {
+    // 2️⃣ Legacy format: (Name) anywhere
+    match = text.match(/\(([^()]{2,50})\)/);
+    if (match) owner = match[1].trim();
+  }
 
-  // 2️⃣ Ignore non-owners
+  if (!owner) return null;
+
+  // 3️⃣ Ignore non-owners and unassigned placeholders
   const blacklist = [
     "confirmed by",
     "raised by",
     "meeting group",
-    "implicit"
+    "implicit",
+    "not stated",
+    "unassigned",
+    "unknown",
+    "tbd",
+    "n/a"
   ];
-
   if (blacklist.some(b => owner.toLowerCase().includes(b))) {
     return null;
   }
@@ -5924,14 +5948,18 @@ function renderOutcomePane(){
   paneMeta.textContent = `${activeOutcomeType.replace("_"," ").toUpperCase()} • ${new Date(item.ts).toLocaleString()}`;
 
   const updates = Array.isArray(item.updates) ? item.updates : [];
-  let html = updates.map(u => `
+  let html = `
+    <button class="secondary" style="margin-bottom:10px;font-size:12px;padding:4px 10px"
+      onclick="openMeetingOutcomes('${escapeHtml(m.name)}')">← Back to ${escapeHtml(m.name)}</button>`;
+
+  html += updates.map(u => `
     <div class="note">
-      ${escapeHtml(u.text)}<br>
+      <div style="white-space:pre-wrap;word-break:break-word">${escapeHtml(u.text)}</div>
       <small>${new Date(u.ts).toLocaleString()}</small>
     </div>`).join("");
 
   html += `
-    <textarea id="newOutcomeUpdate" placeholder="Add a note or update…" style="width:100%;margin-top:8px"></textarea>
+    <textarea id="newOutcomeUpdate" placeholder="Add a note or update…" rows="4" style="width:100%;margin-top:8px"></textarea>
     <div style="margin-top:8px">
       <button onclick="addOutcomeUpdate()">Add Note</button>
     </div>`;
