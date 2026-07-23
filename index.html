@@ -1689,7 +1689,88 @@ async function setPassword(pwd){
 function lockApp(){
   localStorage.setItem(LOCK_KEY, "1");
   document.body.classList.add("locked");
+  // Show fingerprint button when biometric unlock is set up and usable here
+  const bioBtn = document.getElementById("btnBioUnlock");
+  if (bioBtn) bioBtn.style.display = (bioEnabled() && bioSupported()) ? "" : "none";
   requestAnimationFrame(() => { const p = getPwdInput(); if (p) p.focus(); });
+}
+
+/* ===== Biometric (fingerprint / Touch ID) unlock via WebAuthn ===== */
+const BIO_KEY = "appBioCredId";
+
+function bioSupported(){
+  // WebAuthn requires a secure context with a real origin —
+  // works on https (GitHub Pages) and localhost, NOT on file://
+  return !!(window.PublicKeyCredential && navigator.credentials &&
+    (location.protocol === "https:" || location.hostname === "localhost"));
+}
+
+function bioEnabled(){ return !!localStorage.getItem(BIO_KEY); }
+
+function bufToB64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function b64ToBuf(b64){
+  const s = atob(b64);
+  const a = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i);
+  return a.buffer;
+}
+
+async function enableBioUnlock(){
+  if (!hasPassword()) {
+    notify("Set a password first — fingerprint is an additional way to unlock.", "warn", 5000);
+    return;
+  }
+  if (!bioSupported()) {
+    notify("Fingerprint needs HTTPS (open the app via your GitHub Pages URL) — browsers block it for local files.", "warn", 8000);
+    return;
+  }
+  try {
+    const avail = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    if (!avail) {
+      notify("No fingerprint / Touch ID sensor found on this device.", "warn", 5000);
+      return;
+    }
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Task Intelligence", id: location.hostname },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: "task-intelligence-user",
+        displayName: "Task Intelligence"
+      },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+      timeout: 60000
+    }});
+    localStorage.setItem(BIO_KEY, bufToB64(cred.rawId));
+    notify("✅ Fingerprint unlock enabled", "success", 4000);
+    renderAdmin();
+  } catch (err) {
+    notify("Fingerprint setup failed: " + err.message, "error", 6000);
+  }
+}
+
+function disableBioUnlock(){
+  localStorage.removeItem(BIO_KEY);
+  notify("Fingerprint unlock disabled", "info", 3000);
+  renderAdmin();
+}
+
+async function bioUnlock(){
+  const credId = localStorage.getItem(BIO_KEY);
+  if (!credId) return;
+  try {
+    await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: "public-key", id: b64ToBuf(credId), transports: ["internal"] }],
+      userVerification: "required",
+      timeout: 60000
+    }});
+    unlockApp();
+  } catch (err) {
+    const lockError = document.getElementById("lockError");
+    if (lockError) lockError.textContent = "Fingerprint not recognized — use your password.";
+  }
 }
 
 function unlockApp(){
@@ -3413,6 +3494,23 @@ console.log("renderAdmin v2 (with search + archive)");
             "></div>
           </div>
         </label>
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <div style="font-size:13px;font-weight:600">👆 Fingerprint Unlock</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">
+            ${!bioSupported()
+              ? 'Needs HTTPS — open the app via your GitHub Pages URL to use fingerprint/Touch&nbsp;ID'
+              : bioEnabled()
+                ? '✅ Enabled — the lock screen offers fingerprint unlock'
+                : 'Use your device fingerprint / Touch ID instead of typing the password'}
+          </div>
+        </div>
+        ${bioSupported()
+          ? bioEnabled()
+            ? `<button class="secondary danger" style="flex-shrink:0" onclick="disableBioUnlock()">Disable</button>`
+            : `<button class="secondary" style="flex-shrink:0" onclick="enableBioUnlock()">Enable</button>`
+          : ''}
       </div>` : ''}
     </div>
 
@@ -6008,6 +6106,8 @@ document.addEventListener("DOMContentLoaded", () => {
       style="width:100%;padding:10px;border-radius:8px;border:1px solid #333;background:#0f1115;color:#fff;font-size:14px;box-sizing:border-box"
       onkeydown="if(event.key==='Enter')promptUnlock()">
     <button style="margin-top:10px;width:100%;padding:10px" onclick="promptUnlock()">Unlock</button>
+    <button id="btnBioUnlock" style="display:none;margin-top:8px;width:100%;padding:10px;background:transparent;border:1px solid #333;color:#e5e7eb;border-radius:8px;cursor:pointer"
+      onclick="bioUnlock()">👆 Unlock with fingerprint</button>
     <p id="lockError" style="color:#dc2626;font-size:12px;margin:8px 0 0;min-height:18px"></p>
     <p style="margin-top:12px">
       <a href="#" style="font-size:11px;color:#6b7280;text-decoration:none"
