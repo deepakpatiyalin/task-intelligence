@@ -6009,23 +6009,16 @@ function renderOutcomePane(){
     paneMeta.textContent = `${m.name} · ${questions.length} question${questions.length !== 1 ? "s" : ""}`;
 
     const rows = questions.map(q => {
-      const checked = q.resolved ? "checked" : "";
       const rowStyle = q.id === activeOutcomeId
         ? "background:var(--bg);border-radius:8px;padding:10px 12px;margin-bottom:10px;border-left:3px solid var(--accent)"
-        : "padding:10px 12px;margin-bottom:10px;border-left:3px solid transparent";
-      const textStyle = q.resolved
-        ? "font-size:13px;font-weight:600;color:var(--muted);text-decoration:line-through"
-        : "font-size:13px;font-weight:600;color:var(--text)";
+        : "background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px";
+      const textStyle = "font-size:13px;font-weight:600;color:var(--text);line-height:1.5";
       const answerHtml = (q.answer && q.answer.trim() && q.answer !== "null")
-        ? `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);line-height:1.5">💡 ${escapeHtml(q.answer)}</div>`
-        : `<div style="margin-top:5px;margin-left:26px;font-size:12px;color:var(--muted);opacity:0.6">💡 No answer recorded yet</div>`;
+        ? `<div style="margin-top:6px;padding-left:14px;font-size:12px;color:var(--muted);line-height:1.5">💡 ${escapeHtml(q.answer)}</div>`
+        : `<div style="margin-top:6px;padding-left:14px;font-size:12px;color:var(--muted);opacity:0.6">💡 No answer recorded yet</div>`;
       return `
         <div style="${rowStyle}">
-          <div style="display:flex;align-items:flex-start;gap:10px">
-            <input type="checkbox" ${checked} style="margin-top:2px;flex-shrink:0;width:16px;height:16px;cursor:pointer;accent-color:var(--accent)"
-              onchange="markResolved('${escapeHtml(m.name)}','question','${q.id}')">
-            <span style="${textStyle}">${escapeHtml(q.text)}</span>
-          </div>
+          <div style="${textStyle}">${escapeHtml(q.text)}</div>
           ${answerHtml}
         </div>`;
     }).join("");
