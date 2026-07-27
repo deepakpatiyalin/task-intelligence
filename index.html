@@ -2266,6 +2266,7 @@ ${(() => {
             ${a.link ? `<a href="${escapeHtml(safeUrl(a.link))}" target="_blank" rel="noopener noreferrer">Source</a>` : ""}
 
             <div class="actions">
+              <button onclick="copyAnnouncement('${a.id}')">📋 Copy</button>
               <button onclick="openAnnouncementModal('${a.id}')">Edit</button>
               <button class="danger"
                 onclick="deleteAnnouncement('${a.id}')">Delete</button>
@@ -2346,6 +2347,16 @@ function deleteAnnouncement(id){
   db.announcements = db.announcements.filter(a=>a.id!==id);
   saveDB();
   renderAnnouncements();
+}
+
+function copyAnnouncement(id){
+  const a = db.announcements.find(x => x.id === id);
+  if (!a) return;
+  const parts = [a.title, "", a.content];
+  if (a.link) parts.push("", "Source: " + a.link);
+  navigator.clipboard.writeText(parts.join("\n"))
+    .then(() => notify("Announcement copied to clipboard", "success", 2500))
+    .catch(() => notify("Copy failed — check clipboard permissions", "error", 4000));
 }
 
 function hideAllViews(){
