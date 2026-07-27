@@ -2248,10 +2248,7 @@ ${(() => {
   const needsToggle = a.content.length > ANNOUNCEMENT_PREVIEW_LENGTH;
 
   return `
-    <p>
-      ${highlightMatch(escapeHtml(text), q)}
-      ${!isExpanded && needsToggle ? "…" : ""}
-    </p>
+    <p style="white-space:pre-wrap;word-break:break-word">${highlightMatch(escapeHtml(text), q)}${!isExpanded && needsToggle ? "…" : ""}</p>
 
     ${needsToggle ? `
       <button class="btn-ghost"
