@@ -1817,6 +1817,9 @@ function saveDB() {
 if (!Array.isArray(db.announcements)) {
   db.announcements = [];
 }
+if (!Array.isArray(db.reminders)) {
+  db.reminders = [];
+}
 
 
 /* ================= STATE ================= */
@@ -1918,6 +1921,10 @@ function renderSidebar() {
     </div>
     <div class="item ${view.type==="weekly"?"active":""}" onclick="setView('weekly')" title="Weekly Summary">
       🧾 <span class="label">Weekly Summary</span>
+    </div>
+    <div class="item ${view.type==="reminders"?"active":""}" onclick="setView('reminders')" title="Reminders">
+      ⏰ <span class="label">Reminders</span>
+      ${db.reminders.filter(r=>!r.done).length ? `<span class="badge-muted" style="margin-left:auto">${db.reminders.filter(r=>!r.done).length}</span>` : ""}
     </div>
 
     <h3 class="label">Tasks</h3>
@@ -4359,6 +4366,7 @@ function render() {
   if (sc) sc.innerHTML = renderHeaderScorecard();
 if (view.type === "focus") renderFocusToday();
 else if (view.type === "weekly") renderWeeklySummary();
+else if (view.type === "reminders") renderReminders();
 else if (view.type === "timeline") renderMeetingTimeline();
 else if (view.type === "admin") renderAdmin();
 else if (view.type === "announcements") renderAnnouncements();
@@ -6088,6 +6096,116 @@ function addOutcomeUpdate(){
   notify("Note added", "success", 2000);
 }
 
+/* ================= REMINDERS ================= */
+
+function renderReminders(){
+  const pending = db.reminders.filter(r => !r.done)
+    .sort((a,b) => (a.date + (a.time||"")) < (b.date + (b.time||"")) ? -1 : 1);
+  const done = db.reminders.filter(r => r.done);
+
+  const row = r => `
+    <div class="note" style="display:flex;align-items:center;gap:10px">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;${r.done ? "text-decoration:line-through;color:var(--muted)" : ""}">${escapeHtml(r.text)}</div>
+        <small>${r.date}${r.time ? " · " + r.time : " · any time (nags every 20 min)"}</small>
+      </div>
+      ${r.done
+        ? `<button class="icon" title="Delete" onclick="deleteReminder('${r.id}')">🗑</button>`
+        : `<button class="icon" title="Mark done" onclick="doneReminder('${r.id}')">✔</button>
+           <button class="icon" title="Delete" onclick="deleteReminder('${r.id}')">🗑</button>`}
+    </div>`;
+
+  content.innerHTML = `
+    <h2>⏰ Reminders</h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 20px">
+      <input id="remText" placeholder="Remind me to…" style="flex:1;min-width:200px">
+      <input id="remDate" type="date" value="${new Date().toISOString().slice(0,10)}">
+      <input id="remTime" type="time" title="Optional — leave empty to nag every 20 min">
+      <button onclick="addReminder()">➕ Add</button>
+    </div>
+    <h3 style="font-size:13px;color:var(--muted);text-transform:uppercase">Pending (${pending.length})</h3>
+    ${pending.map(row).join("") || '<div style="color:var(--muted);font-size:13px">No pending reminders</div>'}
+    ${done.length ? `<h3 style="font-size:13px;color:var(--muted);text-transform:uppercase;margin-top:20px">Done (${done.length})</h3>${done.map(row).join("")}` : ""}
+  `;
+}
+
+function addReminder(){
+  const text = document.getElementById("remText").value.trim();
+  const date = document.getElementById("remDate").value;
+  const time = document.getElementById("remTime").value;
+  if (!text || !date) { notify("Enter reminder text and date", "warn", 3000); return; }
+  db.reminders.push({ id: crypto.randomUUID(), text, date, time, done: false, snoozeUntil: 0 });
+  saveDB();
+  renderReminders();
+}
+
+function doneReminder(id){
+  const r = db.reminders.find(x => x.id === id);
+  if (!r) return;
+  r.done = true;
+  saveDB();
+  if (view.type === "reminders") renderReminders();
+  checkReminders();
+}
+
+function deleteReminder(id){
+  db.reminders = db.reminders.filter(x => x.id !== id);
+  saveDB();
+  if (view.type === "reminders") renderReminders();
+  checkReminders();
+}
+
+function snoozeReminder(id, minutes){
+  const r = db.reminders.find(x => x.id === id);
+  if (!r) return;
+  r.snoozeUntil = Date.now() + minutes * 60000;
+  saveDB();
+  checkReminders();
+}
+
+function snoozeReminderUntil(id){
+  const t = document.getElementById("snoozeTime-" + id).value;
+  if (!t) return;
+  const r = db.reminders.find(x => x.id === id);
+  if (!r) return;
+  const until = new Date();
+  const [h, min] = t.split(":");
+  until.setHours(+h, +min, 0, 0);
+  if (until.getTime() <= Date.now()) until.setDate(until.getDate() + 1);
+  r.snoozeUntil = until.getTime();
+  saveDB();
+  checkReminders();
+}
+
+function reminderDue(r, now){
+  if (r.done) return false;
+  if (r.snoozeUntil && now < r.snoozeUntil) return false;
+  return now >= new Date(r.date + "T" + (r.time || "00:00")).getTime();
+}
+
+function checkReminders(){
+  const now = Date.now();
+  const due = db.reminders.filter(r => reminderDue(r, now));
+  const overlay = document.getElementById("reminderOverlay");
+  if (!due.length) { overlay.style.display = "none"; return; }
+
+  document.getElementById("reminderList").innerHTML = due.map(r => `
+    <div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--card)">
+      <div style="font-weight:700;font-size:15px">${escapeHtml(r.text)}</div>
+      <small style="color:var(--muted)">${r.date}${r.time ? " · " + r.time : ""}</small>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;align-items:center">
+        <button onclick="doneReminder('${r.id}')">✔ Done</button>
+        <button class="secondary" onclick="snoozeReminder('${r.id}', 20)">😴 20 min</button>
+        <input type="time" id="snoozeTime-${r.id}" style="padding:4px">
+        <button class="secondary" onclick="snoozeReminderUntil('${r.id}')">Snooze until</button>
+      </div>
+    </div>`).join("");
+  overlay.style.display = "flex";
+}
+
+setInterval(checkReminders, 30000);
+document.addEventListener("DOMContentLoaded", checkReminders);
+
 // On every page load: lock unless maintenance mode is active
 document.addEventListener("DOMContentLoaded", () => {
   if (hasPassword() && !isMaintenanceActive()) {
@@ -6097,6 +6215,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 </script>
+<!-- ===== REMINDER POPUP (above everything) ===== -->
+<div id="reminderOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100001;align-items:center;justify-content:center;padding:20px">
+  <div style="background:var(--bg);border:1px solid var(--border);border-radius:14px;padding:20px;max-width:440px;width:100%;max-height:80vh;overflow-y:auto">
+    <h3 style="margin:0 0 14px">⏰ Reminder</h3>
+    <div id="reminderList"></div>
+  </div>
+</div>
+
 <!-- ===== APP LOCK SCREEN ===== -->
 <div id="lockScreen">
   <div class="lock-box">
