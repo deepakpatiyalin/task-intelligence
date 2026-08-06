@@ -6183,10 +6183,38 @@ function reminderDue(r, now){
   return now >= new Date(r.date + "T" + (r.time || "00:00")).getTime();
 }
 
+let _notifiedReminderIds = new Set();
+
+function reminderBeep(){
+  try {
+    const ctx = reminderBeep.ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+    ctx.resume();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880;
+    g.gain.setValueAtTime(0.2, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    o.start(); o.stop(ctx.currentTime + 0.6);
+  } catch {}
+}
+
 function checkReminders(){
   const now = Date.now();
   const due = db.reminders.filter(r => reminderDue(r, now));
   const overlay = document.getElementById("reminderOverlay");
+
+  // OS notification + sound for newly due reminders (incl. ones returning from snooze)
+  const fresh = due.filter(r => !_notifiedReminderIds.has(r.id));
+  _notifiedReminderIds = new Set(due.map(r => r.id));
+  if (fresh.length){
+    reminderBeep();
+    if ("Notification" in window){
+      if (Notification.permission === "default") Notification.requestPermission();
+      if (Notification.permission === "granted")
+        fresh.forEach(r => new Notification("⏰ Reminder", { body: r.text, tag: "rem-" + r.id }));
+    }
+  }
+
   if (!due.length) { overlay.style.display = "none"; return; }
 
   document.getElementById("reminderList").innerHTML = due.map(r => `
