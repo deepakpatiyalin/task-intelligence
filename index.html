@@ -6188,15 +6188,27 @@ let _notifiedReminderIds = new Set();
 function reminderBeep(){
   try {
     const ctx = reminderBeep.ctx ||= new (window.AudioContext || window.webkitAudioContext)();
-    ctx.resume();
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.frequency.value = 880;
-    g.gain.setValueAtTime(0.2, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-    o.start(); o.stop(ctx.currentTime + 0.6);
+    const play = () => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.2, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      o.start(); o.stop(ctx.currentTime + 0.6);
+    };
+    // Browsers keep the context suspended until a user gesture — play after resume resolves
+    ctx.state === "suspended" ? ctx.resume().then(play).catch(()=>{}) : play();
   } catch {}
 }
+
+// Unlock audio on the first user gesture so later beeps can play unattended
+document.addEventListener("click", function unlockAudio(){
+  try {
+    reminderBeep.ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+    reminderBeep.ctx.resume();
+  } catch {}
+  document.removeEventListener("click", unlockAudio);
+}, { once: true });
 
 function checkReminders(){
   const now = Date.now();
