@@ -1326,6 +1326,17 @@ td[contenteditable]:focus {
   <div id="paneBody"></div>
 </div>
 
+<!-- ===== PRE-MEETING BRIEF MODAL ===== -->
+<div class="modal" id="briefModal">
+  <div class="modal-content scrollable" style="max-width:640px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <h3 style="margin:0">📋 Pre-Meeting Brief</h3>
+      <button class="icon" onclick="document.getElementById('briefModal').style.display='none'">✖</button>
+    </div>
+    <div id="briefBody"></div>
+  </div>
+</div>
+
 <div class="modal" id="momModal">
   <div class="modal-content scrollable">
     <h3>📄 Minutes of Meeting</h3>
@@ -2774,10 +2785,118 @@ function generatePreMeetingBrief(meetingName){
     ).join("\n"));
   }
 
-  // open modal with a styled title
-  document.querySelector("#momModal h3").textContent = "📋 Pre-Meeting Brief";
-  document.getElementById("momText").value = sections.join("\n\n");
-  document.getElementById("momModal").style.display = "flex";
+  // Keep the plain-text version for the Copy button
+  window._briefText = sections.join("\n\n");
+
+  // ---------- Styled, actionable view ----------
+  const esc = escapeHtml;
+  const mName = esc(m.name);
+
+  const statPill = (val, label, color) => `
+    <div class="ws-stat" style="padding:8px 6px">
+      <div class="ws-stat-value" style="font-size:18px;${color ? `color:${color}` : ""}">${val}</div>
+      <div class="ws-stat-label">${label}</div>
+    </div>`;
+
+  const taskRowHtml = t => `
+    <div class="ws-row">
+      <div class="ws-row-body">
+        <span class="ws-row-title">${esc(t.title)}</span>
+        <span class="ws-row-meta">${t.due ? `Due ${fmt(t.due)}` : "No due date"}${t.due && new Date(t.due) < today ? ` — <b style="color:#dc2626">${daysSince(t.due)}d overdue</b>` : ""} · ${esc(t.status)}</span>
+      </div>
+      <div class="ws-row-actions">
+        <button class="icon" title="Close" onclick="briefTaskAction('${t.id}','close','${mName}')">✔</button>
+        <button class="icon" title="Postpone +3d" onclick="briefTaskAction('${t.id}','postpone','${mName}')">🕒</button>
+      </div>
+    </div>`;
+
+  const qRowHtml = q => `
+    <div class="ws-row">
+      <div class="ws-row-body">
+        <span class="ws-row-title" style="white-space:normal">${esc(cleanOutcomeText(q.text))}${age(q.ts) ? `<span style="color:#d97706;font-weight:400">${age(q.ts)}</span>` : ""}</span>
+        ${q.answer ? `<span class="ws-row-meta" style="white-space:normal">💡 ${esc(q.answer)}</span>` : ""}
+      </div>
+      <div class="ws-row-actions">
+        <button class="icon" title="Mark answered" onclick="markResolved('${mName}','question','${q.id}');generatePreMeetingBrief('${mName}')">✔</button>
+      </div>
+    </div>`;
+
+  const riskRowHtml = r => `
+    <div class="ws-row">
+      <div class="ws-row-body">
+        <span class="ws-row-title" style="white-space:normal">${esc(cleanOutcomeText(r.text))}${age(r.ts) ? `<span style="color:#d97706;font-weight:400">${age(r.ts)}</span>` : ""}</span>
+      </div>
+      <div class="ws-row-actions">
+        <button class="icon" title="Mark mitigated" onclick="markResolved('${mName}','risk','${r.id}');generatePreMeetingBrief('${mName}')">✔</button>
+      </div>
+    </div>`;
+
+  const section = (icon, title, color, rowsHtml, emptyText) =>
+    `<div class="ws-section-head"><span>${icon} ${title}</span></div>
+     <div class="ws-section" style="margin-bottom:14px">${rowsHtml || `<div class="ws-empty">${emptyText}</div>`}</div>`;
+
+  document.getElementById("briefBody").innerHTML = `
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+      <div>
+        <div style="font-size:16px;font-weight:800">${mName}</div>
+        <div style="font-size:12px;color:var(--muted)">Last session: ${lastDate ? `${fmt(lastDate + "T00:00:00Z")} (${daysSince(lastDate + "T00:00:00Z")}d ago)` : "none recorded"}</div>
+      </div>
+      <button class="ws-btn-copy" onclick="copyBriefText()">📋 Copy as text</button>
+    </div>
+
+    <div class="ws-stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
+      ${statPill(overdueTasks.length, "Overdue", overdueTasks.length ? "#dc2626" : "")}
+      ${statPill(dueSoonTasks.length, "Due this week", dueSoonTasks.length ? "#d97706" : "")}
+      ${statPill(sortedQs.length, "Open questions", sortedQs.length ? "#7c3aed" : "")}
+      ${statPill(sortedRisks.length, "Risks", sortedRisks.length ? "#d97706" : "")}
+    </div>
+
+    <div style="background:color-mix(in srgb, var(--accent) 8%, transparent);border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);margin-bottom:6px">💬 Walk in ready — top priorities</div>
+      <ol style="margin:0;padding-left:20px;font-size:13px;line-height:1.7">
+        ${points.map(p => `<li>${esc(p)}</li>`).join("")}
+      </ol>
+    </div>
+
+    ${section("🔴", "Overdue — chase these", "#dc2626", overdueTasks.map(taskRowHtml).join(""), "No overdue tasks 🎉")}
+    ${section("🟠", "Due this week", "#d97706", dueSoonTasks.map(taskRowHtml).join(""), "Nothing due this week")}
+    ${section("❓", "Questions to raise (oldest first)", "#7c3aed", sortedQs.map(qRowHtml).join(""), "No open questions 🎉")}
+    ${section("⚠️", "Blockers / risks", "#d97706", sortedRisks.map(riskRowHtml).join(""), "No open risks")}
+
+    ${threads.length ? section("🧵", "Follow-up threads", "", threads.map(tc => {
+      const latest = tc.updates[tc.updates.length - 1];
+      return `<div class="ws-row"><div class="ws-row-body">
+        <span class="ws-row-title" style="white-space:normal">${esc(cleanOutcomeText(tc.text))}</span>
+        <span class="ws-row-meta" style="white-space:normal">↳ ${esc(latest.text)} (${fmt(latest.ts)})</span>
+      </div></div>`;
+    }).join(""), "") : ""}
+
+    ${recapLines.length ? `
+      <details style="margin-top:4px">
+        <summary style="cursor:pointer;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">📌 Last session recap</summary>
+        <pre style="white-space:pre-wrap;font-family:inherit;font-size:12px;color:var(--muted);margin:8px 0 0">${esc(recapLines.join("\n"))}</pre>
+      </details>` : ""}
+  `;
+  document.getElementById("briefModal").style.display = "flex";
+}
+
+function briefTaskAction(taskId, action, meetingName){
+  const t = db.tasks.find(x => x.id === taskId);
+  if (!t) return;
+  if (action === "close") t.status = "Closed";
+  else if (action === "postpone") {
+    const base = t.due ? new Date(t.due) : new Date();
+    base.setDate(base.getDate() + 3);
+    t.due = base.toISOString().slice(0, 10);
+  }
+  t.updated = new Date().toISOString();
+  saveDB();
+  generatePreMeetingBrief(meetingName);
+}
+
+function copyBriefText(){
+  navigator.clipboard.writeText(window._briefText || "");
+  notify("Brief copied to clipboard", "success", 2500);
 }
 
 function renderTaskCandidatesWithUpdates(all){
