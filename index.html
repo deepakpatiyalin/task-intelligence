@@ -6251,6 +6251,7 @@ function renderReminders(){
       ${r.done
         ? `<button class="icon" title="Delete" onclick="deleteReminder('${r.id}')">🗑</button>`
         : `<button class="icon" title="Mark done" onclick="doneReminder('${r.id}')">✔</button>
+           <button class="icon" title="Edit" onclick="editReminder('${r.id}')">✏️</button>
            <button class="icon" title="Delete" onclick="deleteReminder('${r.id}')">🗑</button>`}
     </div>`;
 
@@ -6269,7 +6270,7 @@ function renderReminders(){
         <option value="custom">Custom…</option>
       </select>
       <input id="remEvery" type="number" min="1" value="2" style="display:none;width:60px" title="Repeat every N days">
-      <button onclick="addReminder()">➕ Add</button>
+      <button id="remSubmit" onclick="addReminder()">➕ Add</button>
     </div>
     <h3 style="font-size:13px;color:var(--muted);text-transform:uppercase">Pending (${pending.length})</h3>
     ${pending.map(row).join("") || '<div style="color:var(--muted);font-size:13px">No pending reminders</div>'}
@@ -6284,9 +6285,30 @@ function addReminder(){
   if (!text || !date) { notify("Enter reminder text and date", "warn", 3000); return; }
   const repeat = document.getElementById("remRepeat").value;
   const every = repeat === "custom" ? Math.max(1, +document.getElementById("remEvery").value || 1) : 0;
-  db.reminders.push({ id: crypto.randomUUID(), text, date, time, repeat, every, done: false, snoozeUntil: 0 });
+  const existing = db.reminders.find(x => x.id === window._editingReminderId);
+  if (existing) {
+    Object.assign(existing, { text, date, time, repeat, every, snoozeUntil: 0 });
+    window._editingReminderId = null;
+  } else {
+    db.reminders.push({ id: crypto.randomUUID(), text, date, time, repeat, every, done: false, snoozeUntil: 0 });
+  }
   saveDB();
   renderReminders();
+  checkReminders();
+}
+
+function editReminder(id){
+  const r = db.reminders.find(x => x.id === id);
+  if (!r) return;
+  window._editingReminderId = id;
+  document.getElementById("remText").value = r.text;
+  document.getElementById("remDate").value = r.date;
+  document.getElementById("remTime").value = r.time || "";
+  document.getElementById("remRepeat").value = r.repeat || "";
+  document.getElementById("remEvery").value = r.every || 2;
+  document.getElementById("remEvery").style.display = r.repeat === "custom" ? "" : "none";
+  document.getElementById("remSubmit").textContent = "💾 Save";
+  document.getElementById("remText").focus();
 }
 
 // Advance a recurring reminder to its next occurrence after today
