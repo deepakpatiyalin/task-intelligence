@@ -5063,7 +5063,10 @@ async function syncGoogleCalendar(){
       for (const job of toAnalyze) {
         try {
           notify("🤖 Analyzing “" + job.m.name + "”…", "info", 4000);
-          const data = extractAIJson(await callClaudeAPI(job.text));
+          const rawAI = await callClaudeAPI(job.text);
+          let data;
+          try { data = extractAIJson(rawAI); }
+          catch (pe) { console.error("Auto-analyze: unparseable Claude reply for", job.m.name, "\n", rawAI); throw pe; }
           normalizeMeetingOutcomes(job.m);
           const d = dedupNewOutcomes(data, job.m);
           saveSelectedOutcomes(data, job.m, job.date,
@@ -5143,7 +5146,8 @@ async function callClaude(prompt){
 
 async function callClaudeAPI(transcript){
   const hasGeminiStructure = /\bNext steps\b/i.test(transcript) && /\bDecisions\b/i.test(transcript);
-  return callClaude(hasGeminiStructure ? buildGeminiPrompt(transcript) : buildRawPrompt(transcript));
+  return callClaude((hasGeminiStructure ? buildGeminiPrompt(transcript) : buildRawPrompt(transcript)) +
+    "\n\nIMPORTANT: Respond with ONLY the JSON object. No preamble, no explanation, no markdown outside the JSON. If a section has no items, use an empty array.");
 }
 
 /* ---------- AI Pre-Meeting Brief ---------- */
