@@ -5182,7 +5182,9 @@ async function callClaude(prompt){
     localStorage.setItem("claudeSpend", JSON.stringify(s));
     updateClaudeCost();
   }
-  return j.content?.[0]?.text || "";
+  if (j.stop_reason === "refusal") throw new Error("Claude declined this request" + (j.stop_details?.explanation ? ": " + j.stop_details.explanation : ""));
+  // content may lead with a thinking block — take the text block, wherever it is
+  return (j.content || []).filter(b => b.type === "text").map(b => b.text).join("") || "";
 }
 
 // shortcut: hardcoded claude-haiku-5-5 rates ($0.10/M in, $0.50/M out); update if the model changes
