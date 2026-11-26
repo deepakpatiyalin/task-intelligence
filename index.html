@@ -3629,6 +3629,7 @@ console.log("renderAdmin v2 (with search + archive)");
           style="flex:1;min-width:260px;font-family:monospace;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg)">
         <button onclick="saveGoogleClientId()">Save ID</button>
         <button onclick="syncGoogleCalendar()">🔄 Sync Calendar</button>
+        <button class="secondary" onclick="analyzeAllTranscripts()">🤖 Analyze pending</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px">
         <label>Sync last
@@ -5083,6 +5084,37 @@ async function syncGoogleCalendar(){
   } catch (e) {
     notify("Google sync failed: " + e.message, "error", 9000);
   }
+}
+
+// Catch-up: analyze every meeting that has a transcript but no extracted outcomes yet
+async function analyzeAllTranscripts(){
+  if (!localStorage.getItem("claudeApiKey")) { notify("Save your Claude API key in Settings first", "error", 7000); return; }
+  const jobs = db.meetings.filter(m => (m.transcript || "").trim() &&
+    !(m.decisions || []).length && !(m.task_candidates || []).length &&
+    !(m.questions || []).length && !(m.risks || []).length);
+  if (!jobs.length) { notify("No unanalyzed transcripts found", "info", 5000); return; }
+  let ok = 0;
+  for (const m of jobs) {
+    try {
+      notify("🤖 Analyzing “" + m.name + "” (" + (ok + 1) + "/" + jobs.length + ")…", "info", 4000);
+      const rawAI = await callClaudeAPI(m.transcript);
+      let data;
+      try { data = extractAIJson(rawAI); }
+      catch (pe) { console.error("Analyze pending: unparseable Claude reply for", m.name, "\n", rawAI); throw pe; }
+      normalizeMeetingOutcomes(m);
+      const d = dedupNewOutcomes(data, m);
+      // shortcut: outcomes dated today, not the session date buried in the notes header; fine for a one-time catch-up
+      saveSelectedOutcomes(data, m, new Date().toISOString().slice(0, 10),
+        { decisions: d.decisions.map(() => true), tasks: d.task_candidates.map(() => true),
+          risks: d.risks.map(() => true), questions: d.questions.map(() => true) },
+        d.decisions, d.task_candidates, d.risks, d.questions, true);
+      ok++;
+    } catch (e) {
+      notify("Failed “" + m.name + "”: " + e.message, "error", 8000);
+    }
+  }
+  render();
+  notify("🤖 Analyzed " + ok + "/" + jobs.length + " meetings — outcomes & tasks saved", "success", 10000);
 }
 
 // Daily auto-sync: first open of the app each day after 8 AM (local time).
