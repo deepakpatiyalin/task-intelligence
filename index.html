@@ -3629,8 +3629,9 @@ console.log("renderAdmin v2 (with search + archive)");
           value="${localStorage.getItem('googleClientId') || ''}"
           style="flex:1;min-width:260px;font-family:monospace;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg)">
         <button onclick="saveGoogleClientId()">Save ID</button>
-        <button onclick="syncGoogleCalendar()">🔄 Sync Calendar</button>
-        <button class="secondary" onclick="analyzeAllTranscripts()">🤖 Analyze pending</button>
+        <button id="btnSyncCal" onclick="syncGoogleCalendar()">🔄 Sync Calendar</button>
+        <button id="btnAnalyzePending" class="secondary" onclick="analyzeAllTranscripts()">🤖 Analyze pending</button>
+        <button class="secondary" title="Delete meetings that have no notes, no outcomes and no tasks" onclick="removeEmptyMeetings()">🧹 Remove empty meetings</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px">
         <label>Sync last
@@ -5005,11 +5006,26 @@ function getGoogleToken(){
     }).requestAccessToken();
   }));
 }
+// Show live progress on a button while an async job runs; busyBtn(id) restores it
+function busyBtn(id, label){
+  const b = document.getElementById(id);
+  if (!b) return;
+  if (label) {
+    if (!b.dataset.idle) b.dataset.idle = b.textContent;
+    b.disabled = true; b.textContent = label;
+  } else {
+    b.disabled = false;
+    if (b.dataset.idle) { b.textContent = b.dataset.idle; delete b.dataset.idle; }
+  }
+}
+
 async function syncGoogleCalendar(){
   if (location.protocol === "file:") { notify("Google sign-in needs http(s) — open the app via localhost or your hosted URL", "error", 9000); return; }
   if (!localStorage.getItem("googleClientId")) { notify("Save your Google OAuth Client ID first", "error", 7000); return; }
   try {
+    busyBtn("btnSyncCal", "⏳ Signing in…");
     const token = await getGoogleToken();
+    busyBtn("btnSyncCal", "⏳ Fetching events…");
     const H = { Authorization: "Bearer " + token };
     const days = parseInt(localStorage.getItem("gcalDays")) || 7;
     const timeMin = new Date(Date.now() - days * 864e5).toISOString();
@@ -5032,19 +5048,22 @@ async function syncGoogleCalendar(){
         const nx = norm(x.name);
         return nx === nEv || (nEv.length >= 4 && nx.length >= 4 && (nx.includes(nEv) || nEv.includes(nx)));
       });
-      if (!m) { m = { name }; db.meetings.push(m); created++; }
-      else if (m.name !== name) {
+      if (m && m.name !== name) {
         // calendar event name wins over the manually typed one; keep task origins in sync
         db.tasks.forEach(t => { if (t.origin === m.name) t.origin = name; });
         m.name = name;
       }
       const docs = (ev.attachments || []).filter(a => a.mimeType === "application/vnd.google-apps.document");
+      if (!m && !docs.length) continue; // no meeting card for events with no notes attached
       for (const a of docs) {
+        busyBtn("btnSyncCal", "⏳ Importing notes (" + (notes + 1) + ")…");
         const d = await fetch("https://www.googleapis.com/drive/v3/files/" + a.fileId + "/export?mimeType=text/plain", { headers: H });
         if (!d.ok) { skippedDocs++; continue; }
         const text = (await d.text()).trim();
         // shortcut: dedup by first 200 chars of the doc, re-sync after a doc is edited near its top re-imports it
-        if (text && !(m.transcript || "").includes(text.slice(0, 200))) {
+        if (text && !(m && (m.transcript || "").includes(text.slice(0, 200)))) {
+          // create the meeting only when a note actually imports — events without notes stay off the dashboard
+          if (!m) { m = { name }; db.meetings.push(m); created++; }
           const when = (ev.start && (ev.start.dateTime || ev.start.date)) || "";
           const chunk = "--- " + (a.title || "Meeting notes") + " (" + when + ") ---\n" + text;
           m.transcript = (m.transcript ? m.transcript + "\n\n" : "") + chunk;
@@ -5064,6 +5083,7 @@ async function syncGoogleCalendar(){
       let analyzed = 0;
       for (const job of toAnalyze) {
         try {
+          busyBtn("btnSyncCal", "🤖 Analyzing " + (analyzed + 1) + "/" + toAnalyze.length + "…");
           notify("🤖 Analyzing “" + job.m.name + "”…", "info", 4000);
           const rawAI = await callClaudeAPI(job.text);
           let data;
@@ -5084,7 +5104,22 @@ async function syncGoogleCalendar(){
     }
   } catch (e) {
     notify("Google sync failed: " + e.message, "error", 9000);
+  } finally {
+    busyBtn("btnSyncCal");
   }
+}
+
+// One-off cleanup: delete meeting cards with nothing in them (earlier syncs created one per calendar event)
+function removeEmptyMeetings(){
+  const empty = db.meetings.filter(m => !(m.transcript || "").trim() &&
+    !(m.decisions || []).length && !(m.task_candidates || []).length &&
+    !(m.questions || []).length && !(m.risks || []).length &&
+    !db.tasks.some(t => t.origin === m.name));
+  if (!empty.length) { notify("No empty meetings found", "info", 5000); return; }
+  if (!confirm("Delete " + empty.length + " empty meeting(s)?\n\n" + empty.map(m => "• " + m.name).join("\n"))) return;
+  db.meetings = db.meetings.filter(m => !empty.includes(m));
+  saveDB(); render();
+  notify("🧹 Removed " + empty.length + " empty meeting(s)", "success", 7000);
 }
 
 // Catch-up: analyze every meeting that has a transcript but no extracted outcomes yet
@@ -5094,18 +5129,21 @@ async function analyzeAllTranscripts(){
     !(m.decisions || []).length && !(m.task_candidates || []).length &&
     !(m.questions || []).length && !(m.risks || []).length);
   if (!jobs.length) { notify("No unanalyzed transcripts found", "info", 5000); return; }
-  let ok = 0;
+  let ok = 0, done = 0;
   for (const m of jobs) {
     try {
-      notify("🤖 Analyzing “" + m.name + "” (" + (ok + 1) + "/" + jobs.length + ")…", "info", 4000);
+      busyBtn("btnAnalyzePending", "🤖 Analyzing " + (++done) + "/" + jobs.length + "…");
+      notify("🤖 Analyzing “" + m.name + "” (" + done + "/" + jobs.length + ")…", "info", 4000);
       const rawAI = await callClaudeAPI(m.transcript);
       let data;
       try { data = extractAIJson(rawAI); }
       catch (pe) { console.error("Analyze pending: unparseable Claude reply for", m.name, "\n", rawAI); throw pe; }
       normalizeMeetingOutcomes(m);
       const d = dedupNewOutcomes(data, m);
-      // shortcut: outcomes dated today, not the session date buried in the notes header; fine for a one-time catch-up
-      saveSelectedOutcomes(data, m, new Date().toISOString().slice(0, 10),
+      // date outcomes to the latest session date found in the notes headers; today only if none found
+      // shortcut: one date for the whole transcript — a multi-session backfill stamps all items with the newest session's date
+      const dates = [...m.transcript.matchAll(/\((\d{4}-\d{2}-\d{2})/g)].map(x => x[1]).sort();
+      saveSelectedOutcomes(data, m, dates.pop() || new Date().toISOString().slice(0, 10),
         { decisions: d.decisions.map(() => true), tasks: d.task_candidates.map(() => true),
           risks: d.risks.map(() => true), questions: d.questions.map(() => true) },
         d.decisions, d.task_candidates, d.risks, d.questions, true);
@@ -5114,6 +5152,7 @@ async function analyzeAllTranscripts(){
       notify("Failed “" + m.name + "”: " + e.message, "error", 8000);
     }
   }
+  busyBtn("btnAnalyzePending");
   render();
   notify("🤖 Analyzed " + ok + "/" + jobs.length + " meetings — outcomes & tasks saved", "success", 10000);
 }
