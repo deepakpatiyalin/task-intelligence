@@ -3603,6 +3603,24 @@ console.log("renderAdmin v2 (with search + archive)");
     </div>
 
     <div style="margin-bottom:24px;padding:16px;background:var(--card);border-radius:10px;border:1px solid var(--border)">
+      <h3 style="margin:0 0 12px;font-size:14px">📅 Google Calendar</h3>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="text" id="googleClientIdInput"
+          placeholder="xxxxx.apps.googleusercontent.com"
+          value="${localStorage.getItem('googleClientId') || ''}"
+          style="flex:1;min-width:260px;font-family:monospace;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg)">
+        <button onclick="saveGoogleClientId()">Save ID</button>
+        <button onclick="syncGoogleCalendar()">🔄 Sync Calendar</button>
+      </div>
+      <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">
+        Pulls last 7 days of meetings and imports attached Google Docs notes as transcripts.
+        Needs an OAuth Client ID (Web application) from
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Google Cloud Console</a>.
+        Read-only access; nothing is written to your calendar.
+      </p>
+    </div>
+
+    <div style="margin-bottom:24px;padding:16px;background:var(--card);border-radius:10px;border:1px solid var(--border)">
       <h3 style="margin:0 0 12px;font-size:14px">🔒 App Password</h3>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button onclick="handleSetPassword()">🔑 ${localStorage.getItem('appPwdHash') ? 'Change' : 'Set'} Password</button>
@@ -4925,6 +4943,71 @@ function reviewMeeting(meetingName){
     return;
   }
   activeReviewMeeting = m;
+}
+
+/* ---------- Google Calendar sync (read-only) ---------- */
+function saveGoogleClientId(){
+  const v = document.getElementById("googleClientIdInput").value.trim();
+  if (v) localStorage.setItem("googleClientId", v); else localStorage.removeItem("googleClientId");
+  notify(v ? "Google Client ID saved ✓" : "Google Client ID removed", "success", 4000);
+}
+let _gisPromise = null;
+function loadGIS(){
+  if (!_gisPromise) _gisPromise = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client";
+    s.onload = res;
+    s.onerror = () => { _gisPromise = null; rej(new Error("could not load Google sign-in script")); };
+    document.head.appendChild(s);
+  });
+  return _gisPromise;
+}
+function getGoogleToken(){
+  return loadGIS().then(() => new Promise((res, rej) => {
+    google.accounts.oauth2.initTokenClient({
+      client_id: localStorage.getItem("googleClientId"),
+      scope: "https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly",
+      callback: t => t.access_token ? res(t.access_token) : rej(new Error(t.error || "no token returned")),
+      error_callback: e => rej(new Error(e.message || "sign-in cancelled"))
+    }).requestAccessToken();
+  }));
+}
+async function syncGoogleCalendar(){
+  if (location.protocol === "file:") { notify("Google sign-in needs http(s) — open the app via localhost or your hosted URL", "error", 9000); return; }
+  if (!localStorage.getItem("googleClientId")) { notify("Save your Google OAuth Client ID first", "error", 7000); return; }
+  try {
+    const token = await getGoogleToken();
+    const H = { Authorization: "Bearer " + token };
+    const timeMin = new Date(Date.now() - 7 * 864e5).toISOString();
+    const timeMax = new Date(Date.now() + 864e5).toISOString();
+    const r = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=100&timeMin=" + encodeURIComponent(timeMin) + "&timeMax=" + encodeURIComponent(timeMax), { headers: H });
+    if (!r.ok) throw new Error("Calendar API error " + r.status);
+    const events = (await r.json()).items || [];
+    let created = 0, notes = 0, skippedDocs = 0;
+    for (const ev of events) {
+      const name = (ev.summary || "").trim();
+      if (!name || ev.status === "cancelled") continue;
+      let m = db.meetings.find(x => x.name === name);
+      if (!m) { m = { name }; db.meetings.push(m); created++; }
+      const docs = (ev.attachments || []).filter(a => a.mimeType === "application/vnd.google-apps.document");
+      for (const a of docs) {
+        const d = await fetch("https://www.googleapis.com/drive/v3/files/" + a.fileId + "/export?mimeType=text/plain", { headers: H });
+        if (!d.ok) { skippedDocs++; continue; }
+        const text = (await d.text()).trim();
+        // shortcut: dedup by first 200 chars of the doc, re-sync after a doc is edited near its top re-imports it
+        if (text && !(m.transcript || "").includes(text.slice(0, 200))) {
+          const when = (ev.start && (ev.start.dateTime || ev.start.date)) || "";
+          m.transcript = (m.transcript ? m.transcript + "\n\n" : "") + "--- " + (a.title || "Meeting notes") + " (" + when + ") ---\n" + text;
+          notes++;
+        }
+      }
+    }
+    saveDB();
+    render();
+    notify("Calendar synced ✓ — " + events.length + " events, " + created + " new meetings, " + notes + " notes imported" + (skippedDocs ? ", " + skippedDocs + " docs inaccessible" : ""), "success", 9000);
+  } catch (e) {
+    notify("Google sync failed: " + e.message, "error", 9000);
+  }
 }
 
 function saveClaudeApiKey(){
