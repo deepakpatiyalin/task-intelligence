@@ -3630,6 +3630,19 @@ console.log("renderAdmin v2 (with search + archive)");
         <button onclick="saveGoogleClientId()">Save ID</button>
         <button onclick="syncGoogleCalendar()">🔄 Sync Calendar</button>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px">
+        <label>Sync last
+          <input type="number" min="1" max="60" value="${localStorage.getItem('gcalDays') || 7}"
+            onchange="localStorage.setItem('gcalDays', this.value)"
+            style="width:56px;margin:0 4px;padding:4px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg)">
+          days
+        </label>
+        <label style="margin-left:14px;display:flex;align-items:center;gap:6px">
+          <input type="checkbox" ${localStorage.getItem('gcalAutoSync') ? 'checked' : ''}
+            onchange="this.checked ? localStorage.setItem('gcalAutoSync','1') : localStorage.removeItem('gcalAutoSync')">
+          Auto-sync on first open each day (after 8 AM)
+        </label>
+      </div>
       <p style="margin:8px 0 0;font-size:12px;color:var(--muted)">
         Pulls last 7 days of meetings and imports attached Google Docs notes as transcripts.
         Needs an OAuth Client ID (Web application) from
@@ -4996,7 +5009,8 @@ async function syncGoogleCalendar(){
   try {
     const token = await getGoogleToken();
     const H = { Authorization: "Bearer " + token };
-    const timeMin = new Date(Date.now() - 7 * 864e5).toISOString();
+    const days = parseInt(localStorage.getItem("gcalDays")) || 7;
+    const timeMin = new Date(Date.now() - days * 864e5).toISOString();
     const timeMax = new Date(Date.now() + 864e5).toISOString();
     const r = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=100&timeMin=" + encodeURIComponent(timeMin) + "&timeMax=" + encodeURIComponent(timeMax), { headers: H });
     if (!r.ok) throw new Error("Calendar API error " + r.status);
@@ -5067,6 +5081,18 @@ async function syncGoogleCalendar(){
     notify("Google sync failed: " + e.message, "error", 9000);
   }
 }
+
+// Daily auto-sync: first open of the app each day after 8 AM (local time).
+// shortcut: a static page can't wake itself at 8am — it syncs when you first open the app that day; a true scheduled sync needs a server/cron
+setTimeout(() => {
+  const d = new Date();
+  const today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  if (localStorage.getItem("gcalAutoSync") && localStorage.getItem("googleClientId")
+      && d.getHours() >= 8 && localStorage.getItem("gcalLastAutoSync") !== today) {
+    localStorage.setItem("gcalLastAutoSync", today);
+    syncGoogleCalendar();
+  }
+}, 2500);
 
 function saveClaudeApiKey(){
   const key = (document.getElementById("claudeApiKeyInput") || {}).value || "";
