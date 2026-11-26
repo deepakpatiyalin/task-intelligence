@@ -1299,6 +1299,7 @@ td[contenteditable]:focus {
   </div>
   <div style="display:flex;align-items:center;gap:6px">
     <button id="btnNewTask">➕ New Task</button>
+    <button class="secondary" title="Ask your data" onclick="openAsk()">💬</button>
     <button class="secondary" id="btnExport" title="Export data">⬇</button>
     <button class="secondary" id="btnImport" title="Import data">⬆</button>
     <button class="secondary" id="btnTheme" title="Toggle theme">🌙</button>
@@ -1327,6 +1328,18 @@ td[contenteditable]:focus {
 </div>
 
 <!-- ===== PRE-MEETING BRIEF MODAL ===== -->
+<div class="modal" id="askModal">
+  <div class="modal-content">
+    <h3>💬 Ask your data</h3>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <input id="askInput" style="flex:1" placeholder="e.g. what's pending from Bachittar? what did we decide about X?"
+        onkeydown="if(event.key==='Enter')askData()">
+      <button onclick="askData()">Ask</button>
+    </div>
+    <div id="askOut" style="display:none;margin-top:14px;white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:50vh;overflow:auto;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px"></div>
+  </div>
+</div>
+
 <div class="modal" id="briefModal">
   <div class="modal-content scrollable" style="max-width:640px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -2852,8 +2865,13 @@ function generatePreMeetingBrief(meetingName){
         <div style="font-size:16px;font-weight:800">${mName}</div>
         <div style="font-size:12px;color:var(--muted)">Last session: ${lastDate ? `${fmt(lastDate + "T00:00:00Z")} (${daysSince(lastDate + "T00:00:00Z")}d ago)` : "none recorded"}</div>
       </div>
-      <button class="ws-btn-copy" onclick="copyBriefText()">📋 Copy as text</button>
+      <div style="display:flex;gap:8px">
+        <button class="ws-btn-copy" onclick="aiBriefPoints()">✨ AI talking points</button>
+        <button class="ws-btn-copy" onclick="copyBriefText()">📋 Copy as text</button>
+      </div>
     </div>
+
+    <div id="aiBriefOut" style="display:none;white-space:pre-wrap;font-size:13px;line-height:1.7;background:color-mix(in srgb, var(--accent) 8%, transparent);border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:16px"></div>
 
     <div class="ws-stats" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">
       ${statPill(overdueTasks.length, "Overdue", overdueTasks.length ? "#dc2626" : "")}
@@ -4984,11 +5002,26 @@ async function syncGoogleCalendar(){
     if (!r.ok) throw new Error("Calendar API error " + r.status);
     const events = (await r.json()).items || [];
     let created = 0, notes = 0, skippedDocs = 0;
+    const toAnalyze = [];
     for (const ev of events) {
       const name = (ev.summary || "").trim();
       if (!name || ev.status === "cancelled") continue;
-      let m = db.meetings.find(x => x.name === name);
+      // skip personal/task blocks: no attendees besides yourself
+      if (!(ev.attendees || []).some(a => !a.self)) continue;
+      // fuzzy-match existing (manually created) meetings: "TOC Mgmt" event ↔ "TOC Mgmt Weekly" meeting
+      const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const nEv = norm(name);
+      // shortcut: containment match only, min 4 chars to avoid "1-1" matching every 1-1; upgrade if titles diverge more
+      let m = db.meetings.find(x => {
+        const nx = norm(x.name);
+        return nx === nEv || (nEv.length >= 4 && nx.length >= 4 && (nx.includes(nEv) || nEv.includes(nx)));
+      });
       if (!m) { m = { name }; db.meetings.push(m); created++; }
+      else if (m.name !== name) {
+        // calendar event name wins over the manually typed one; keep task origins in sync
+        db.tasks.forEach(t => { if (t.origin === m.name) t.origin = name; });
+        m.name = name;
+      }
       const docs = (ev.attachments || []).filter(a => a.mimeType === "application/vnd.google-apps.document");
       for (const a of docs) {
         const d = await fetch("https://www.googleapis.com/drive/v3/files/" + a.fileId + "/export?mimeType=text/plain", { headers: H });
@@ -4997,14 +5030,39 @@ async function syncGoogleCalendar(){
         // shortcut: dedup by first 200 chars of the doc, re-sync after a doc is edited near its top re-imports it
         if (text && !(m.transcript || "").includes(text.slice(0, 200))) {
           const when = (ev.start && (ev.start.dateTime || ev.start.date)) || "";
-          m.transcript = (m.transcript ? m.transcript + "\n\n" : "") + "--- " + (a.title || "Meeting notes") + " (" + when + ") ---\n" + text;
+          const chunk = "--- " + (a.title || "Meeting notes") + " (" + when + ") ---\n" + text;
+          m.transcript = (m.transcript ? m.transcript + "\n\n" : "") + chunk;
           notes++;
+          const job = toAnalyze.find(j => j.m === m);
+          if (job) job.text += "\n\n" + chunk;
+          else toAnalyze.push({ m, date: when.slice(0, 10) || new Date().toISOString().slice(0, 10), text: chunk });
         }
       }
     }
     saveDB();
     render();
     notify("Calendar synced ✓ — " + events.length + " events, " + created + " new meetings, " + notes + " notes imported" + (skippedDocs ? ", " + skippedDocs + " docs inaccessible" : ""), "success", 9000);
+
+    // Auto-analyze newly imported notes with Claude (sequential — one API call per meeting)
+    if (toAnalyze.length && localStorage.getItem("claudeApiKey")) {
+      let analyzed = 0;
+      for (const job of toAnalyze) {
+        try {
+          notify("🤖 Analyzing “" + job.m.name + "”…", "info", 4000);
+          const data = extractAIJson(await callClaudeAPI(job.text));
+          normalizeMeetingOutcomes(job.m);
+          const d = dedupNewOutcomes(data, job.m);
+          saveSelectedOutcomes(data, job.m, job.date,
+            { decisions: d.decisions.map(() => true), tasks: d.task_candidates.map(() => true),
+              risks: d.risks.map(() => true), questions: d.questions.map(() => true) },
+            d.decisions, d.task_candidates, d.risks, d.questions, true);
+          analyzed++;
+        } catch (e) {
+          notify("Auto-analyze failed for " + job.m.name + ": " + e.message, "error", 9000);
+        }
+      }
+      if (analyzed) { render(); notify("🤖 Auto-analyzed " + analyzed + " meeting(s) — outcomes saved", "success", 9000); }
+    }
   } catch (e) {
     notify("Google sync failed: " + e.message, "error", 9000);
   }
@@ -5033,6 +5091,88 @@ function updateAnalyzeButton(){
   btn.style.display = localStorage.getItem("claudeApiKey") ? "inline-block" : "none";
 }
 
+async function callClaude(prompt){
+  const apiKey = localStorage.getItem("claudeApiKey");
+  if (!apiKey) throw new Error("No Claude API key set");
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true"
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-5-5",
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || "API error " + res.status);
+  }
+  return (await res.json()).content?.[0]?.text || "";
+}
+
+async function callClaudeAPI(transcript){
+  const hasGeminiStructure = /\bNext steps\b/i.test(transcript) && /\bDecisions\b/i.test(transcript);
+  return callClaude(hasGeminiStructure ? buildGeminiPrompt(transcript) : buildRawPrompt(transcript));
+}
+
+/* ---------- AI Pre-Meeting Brief ---------- */
+async function aiBriefPoints(){
+  const el = document.getElementById("aiBriefOut");
+  if (!localStorage.getItem("claudeApiKey")) { notify("Save your Claude API key in Settings first", "error", 7000); return; }
+  el.style.display = "block";
+  el.textContent = "✨ Thinking…";
+  try {
+    el.textContent = await callClaude(
+      "You are prepping me (Deepak) for the meeting below. From the data, write the 4-6 sharpest talking points, prioritized, one line each — direct and specific (who, what, the ask). Mention names and ages/dates where they add pressure. Plain text, numbered, no markdown, no preamble.\n\n" +
+      (window._briefText || ""));
+  } catch (e) {
+    el.style.display = "none";
+    notify("AI brief failed: " + e.message, "error", 8000);
+  }
+}
+
+/* ---------- Ask your data ---------- */
+function buildDataContext(){
+  const lines = [];
+  db.meetings.forEach(m => {
+    if (m.archived) return;
+    lines.push("# Meeting: " + m.name);
+    (m.decisions || []).forEach(d => lines.push("Decision (" + (d.ts || "").slice(0, 10) + "): " + d.text));
+    (m.questions || []).forEach(q => lines.push("Question" + (q.resolved ? " (resolved)" : " (open)") + ": " + q.text + (q.answer ? " — Answer: " + q.answer : "")));
+    (m.risks || []).forEach(r => lines.push("Risk (" + (r.ts || "").slice(0, 10) + "): " + r.text));
+  });
+  db.tasks.forEach(t => lines.push(
+    "Task [" + t.status + "]" + (t.due ? " due " + t.due : "") + " (from " + (t.origin || "manual") + "): " + t.title +
+    ((t.tags || []).length ? "  @" + t.tags.join(",") : "") +
+    ((t.updates || []).length ? "  Latest update: " + t.updates[t.updates.length - 1].text : "")
+  ));
+  return lines.join("\n");
+}
+function openAsk(){
+  document.getElementById("askModal").style.display = "flex";
+  document.getElementById("askInput").focus();
+}
+async function askData(){
+  const q = document.getElementById("askInput").value.trim();
+  if (!q) return;
+  if (!localStorage.getItem("claudeApiKey")) { notify("Save your Claude API key in Settings first", "error", 7000); return; }
+  const out = document.getElementById("askOut");
+  out.style.display = "block";
+  out.textContent = "✨ Thinking…";
+  try {
+    out.textContent = await callClaude(
+      "Answer the question using ONLY the meeting/task data below. Be brief and specific; cite meeting names and dates. Today is " +
+      new Date().toDateString() + ". If the data doesn't contain the answer, say so plainly.\n\nQUESTION: " + q + "\n\nDATA:\n" + buildDataContext());
+  } catch (e) {
+    out.textContent = "Error: " + e.message;
+  }
+}
+
 async function analyzeWithClaude(){
   const apiKey = localStorage.getItem("claudeApiKey");
   if (!apiKey) { notify("No API key set \u2014 go to Manage Meetings to add one", "warn", 6000); return; }
@@ -5050,32 +5190,8 @@ async function analyzeWithClaude(){
   status.style.display = "block";
   status.textContent = "Sending to Claude AI\u2026";
 
-  const hasGeminiStructure = /\bNext steps\b/i.test(transcript) && /\bDecisions\b/i.test(transcript);
-  const prompt = hasGeminiStructure ? buildGeminiPrompt(transcript) : buildRawPrompt(transcript);
-
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-allow-browser": "true"
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 2048,
-        messages: [{ role: "user", content: prompt }]
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || "API error " + res.status);
-    }
-
-    const json = await res.json();
-    const rawText = json.content?.[0]?.text || "";
+    const rawText = await callClaudeAPI(transcript);
     status.textContent = "Parsing response\u2026";
 
     const dateEl = document.getElementById("aiMeetingDate");
@@ -5286,12 +5402,7 @@ function healJSONQuotes(str) {
   return out;
 }
 
-function parseAIReview(){
-  let data;
-  try {
-    const raw = aiText.value.trim();
-    if (!raw) { notify("Paste the AI response first.", "warn", 5000); return; }
-
+function extractAIJson(raw){
     // Step 1 — sanitize invisible/encoding artifacts introduced by AI chat UIs
     const sanitized = raw
       .replace(/^﻿/, '')
@@ -5315,14 +5426,22 @@ function parseAIReview(){
 
     // Step 3 — try standard parse, then healed parse
     try {
-      data = JSON.parse(extracted);
+      return JSON.parse(extracted);
     } catch (e1) {
       try {
-        data = JSON.parse(healJSONQuotes(extracted));
+        return JSON.parse(healJSONQuotes(extracted));
       } catch (e2) {
         throw new Error("JSON malformed: " + e2.message + "\n\nFirst 200 chars extracted:\n" + extracted.slice(0, 200));
       }
     }
+}
+
+function parseAIReview(){
+  let data;
+  try {
+    const raw = aiText.value.trim();
+    if (!raw) { notify("Paste the AI response first.", "warn", 5000); return; }
+    data = extractAIJson(raw);
   } catch (err) {
     notify("Could not parse — " + err.message, "error", 10000);
     console.error("JSON parse error:", err);
@@ -5347,21 +5466,13 @@ function parseAIReview(){
 // Store original aiModal HTML once for restoration
 let _aiModalOriginalHTML = null;
 
-function showParseReview(data, m, meetingDate) {
-  const modal = document.getElementById("aiModal");
-  if (!_aiModalOriginalHTML) {
-    _aiModalOriginalHTML = modal.querySelector(".modal-content").innerHTML;
-  }
+// Drop items already stored on the meeting; questions may be objects {text, answer} or plain strings
+function dedupNewOutcomes(data, m){
+  const normalise = str => (str || "").toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  // Normalise text helper for dedup
-  function normalise(str){
-    return (str || "").toLowerCase()
-      .replace(/[^a-z0-9\s]/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-
-  // Build seen-set from already stored items
   const seen = new Set([
     ...m.decisions.map(x => normalise(x.text)),
     ...m.questions.map(x => normalise(x.text)),
@@ -5381,14 +5492,24 @@ function showParseReview(data, m, meetingDate) {
     return out;
   }
 
-  const decisions      = dedup(data.decisions      || [], false);
-  const task_candidates= dedup(data.task_candidates|| [], false);
-  const risks          = dedup(data.risks          || [], false);
-  // questions may be objects {text, answer} or plain strings
   const rawQs = (data.questions || []).map(q =>
     typeof q === "string" ? { text: q, answer: null } : q
   );
-  const questions = dedup(rawQs, true);
+  return {
+    decisions:       dedup(data.decisions       || [], false),
+    task_candidates: dedup(data.task_candidates || [], false),
+    risks:           dedup(data.risks           || [], false),
+    questions:       dedup(rawQs, true)
+  };
+}
+
+function showParseReview(data, m, meetingDate) {
+  const modal = document.getElementById("aiModal");
+  if (!_aiModalOriginalHTML) {
+    _aiModalOriginalHTML = modal.querySelector(".modal-content").innerHTML;
+  }
+
+  const { decisions, task_candidates, risks, questions } = dedupNewOutcomes(data, m);
 
   function renderSection(label, items, key, isQuestion) {
     if (!items.length) return "";
@@ -5473,7 +5594,7 @@ function extractDueDate(text) {
   return null;
 }
 
-function saveSelectedOutcomes(data, m, meetingDate, selected, decisions, task_candidates, risks, questions) {
+function saveSelectedOutcomes(data, m, meetingDate, selected, decisions, task_candidates, risks, questions, silent) {
   const now = () => new Date(meetingDate + "T12:00:00.000Z").toISOString();
 
   (selected.decisions || []).forEach((checked, i) => {
@@ -5524,6 +5645,9 @@ function saveSelectedOutcomes(data, m, meetingDate, selected, decisions, task_ca
   const qCount = (selected.questions || []).filter(Boolean).length;
 
   saveDB();
+
+  // silent = auto-analyze path: no modal/UI to clean up, keep transcript so calendar sync dedup still works
+  if (silent) return;
 
   // Restore modal to original state
   restoreAIModal();
