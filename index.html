@@ -1299,6 +1299,7 @@ td[contenteditable]:focus {
   </div>
   <div style="display:flex;align-items:center;gap:6px">
     <button id="btnNewTask">➕ New Task</button>
+    <span id="claudeCost" title="Claude API spend so far (tracked in this browser)" style="font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:14px;padding:5px 10px"></span>
     <button class="secondary" title="Ask your data" onclick="openAsk()">💬</button>
     <button class="secondary" id="btnExport" title="Export data">⬇</button>
     <button class="secondary" id="btnImport" title="Import data">⬆</button>
@@ -5173,8 +5174,24 @@ async function callClaude(prompt){
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || "API error " + res.status);
   }
-  return (await res.json()).content?.[0]?.text || "";
+  const j = await res.json();
+  if (j.usage) {
+    const s = JSON.parse(localStorage.getItem("claudeSpend") || '{"i":0,"o":0}');
+    s.i += j.usage.input_tokens || 0;
+    s.o += j.usage.output_tokens || 0;
+    localStorage.setItem("claudeSpend", JSON.stringify(s));
+    updateClaudeCost();
+  }
+  return j.content?.[0]?.text || "";
 }
+
+// shortcut: hardcoded claude-haiku-5-5 rates ($0.10/M in, $0.50/M out); update if the model changes
+function updateClaudeCost(){
+  const s = JSON.parse(localStorage.getItem("claudeSpend") || '{"i":0,"o":0}');
+  const el = document.getElementById("claudeCost");
+  if (el) el.textContent = "🤖 $" + ((s.i * 0.10 + s.o * 0.50) / 1e6).toFixed(4);
+}
+updateClaudeCost();
 
 async function callClaudeAPI(transcript){
   const hasGeminiStructure = /\bNext steps\b/i.test(transcript) && /\bDecisions\b/i.test(transcript);
