@@ -1301,12 +1301,22 @@ td[contenteditable]:focus {
     <button id="btnNewTask">➕ New Task</button>
     <span id="claudeCost" title="Claude API spend so far (tracked in this browser)" style="font-size:12px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:14px;padding:5px 10px"></span>
     <button class="secondary" title="Ask your data" onclick="openAsk()">💬</button>
+    <button class="secondary" title="Morning brief" onclick="generateMorningBrief(true)">☀️</button>
     <button class="secondary" id="btnExport" title="Export data">⬇</button>
     <button class="secondary" id="btnImport" title="Import data">⬆</button>
     <button class="secondary" id="btnTheme" title="Toggle theme">🌙</button>
     <button class="secondary" title="Settings" onclick="setView('admin')" style="font-size:16px;padding:6px 10px">⚙</button>
   </div>
 </header>
+
+<!-- ================= MORNING BRIEF ================= -->
+<div id="morningBrief" style="display:none;margin:10px 16px 0;padding:12px 14px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px">
+  <div style="display:flex;align-items:center;gap:8px">
+    <strong style="flex:1">☀️ Your day</strong>
+    <button class="secondary" style="font-size:12px" onclick="dismissMorningBrief()">✖</button>
+  </div>
+  <div id="morningBriefText" style="white-space:pre-wrap;font-size:13px;margin-top:6px"></div>
+</div>
 
 <!-- ================= MAIN LAYOUT ================= -->
 <main id="main">
@@ -1521,6 +1531,7 @@ const INACTIVITY_MS = 5 * 60 * 1000; // 5 minutes
 let inactivityTimer;
 let meetingSearchText = "";
 let showArchivedMeetings = false;
+let showNoTaskMeetings = false;
 
 // Lock screen elements live later in the DOM; resolve lazily.
 function getPwdInput(){ return document.getElementById("lockPassword"); }
@@ -1982,17 +1993,27 @@ function renderSidebar() {
     </div>
 
     <h3 class="label">Meetings</h3>
-    ${db.meetings.filter(m => !m.archived).map(m => {
-      const active = isMeetingActive(m.name);
-      const openCount = db.tasks.filter(t => t.origin === m.name && t.status !== "Closed").length;
-      return `
+    ${(() => {
+      const row = m => {
+        const active = isMeetingActive(m.name);
+        const openCount = db.tasks.filter(t => t.origin === m.name && t.status !== "Closed").length;
+        return `
         <div class="item ${view.type==="meeting" && view.value===m.name ? "active":""} ${!active ? "inactive" : ""}"
           onclick="setView('meeting','${m.name}')" title="${m.name}">
           <span class="health-dot ${getMeetingHealth(m.name)}"></span>
           <span class="label" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.name}</span>
           ${openCount > 0 ? `<span class="badge-muted">${openCount}</span>` : ""}
         </div>`;
-    }).join("")}
+      };
+      // meetings without open tasks collapse into a toggle group; recomputed each render, so they move up automatically once a task lands
+      const all = db.meetings.filter(m => !m.archived);
+      const withTasks = all.filter(m => db.tasks.some(t => t.origin === m.name && t.status !== "Closed"));
+      const noTasks = all.filter(m => !withTasks.includes(m));
+      return withTasks.map(row).join("") + (noTasks.length ? `
+        <div class="item" onclick="showNoTaskMeetings=!showNoTaskMeetings;render()" title="Meetings with no open tasks">
+          ${showNoTaskMeetings ? "▾" : "▸"} <span class="label" style="opacity:.7">No open tasks (${noTasks.length})</span>
+        </div>` + (showNoTaskMeetings ? noTasks.map(row).join("") : "") : "");
+    })()}
 
     <h3 class="label">Tools</h3>
     <div class="item" onclick="generateDailyHandoff()" title="Generate today's handoff report">
@@ -5033,6 +5054,11 @@ async function syncGoogleCalendar(){
     const r = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=100&timeMin=" + encodeURIComponent(timeMin) + "&timeMax=" + encodeURIComponent(timeMax), { headers: H });
     if (!r.ok) throw new Error("Calendar API error " + r.status);
     const events = (await r.json()).items || [];
+    // remember today's meetings for the morning brief (sync window already includes today)
+    const todayISO = new Date().getFullYear() + "-" + String(new Date().getMonth() + 1).padStart(2, "0") + "-" + String(new Date().getDate()).padStart(2, "0");
+    localStorage.setItem("gcalTodayEvents", JSON.stringify(events
+      .filter(ev => ev.summary && ev.status !== "cancelled" && ((ev.start || {}).dateTime || (ev.start || {}).date || "").slice(0, 10) === todayISO)
+      .map(ev => ((ev.start.dateTime || "").slice(11, 16) || "all-day") + " " + ev.summary)));
     let created = 0, notes = 0, skippedDocs = 0;
     const toAnalyze = [];
     for (const ev of events) {
@@ -5085,10 +5111,7 @@ async function syncGoogleCalendar(){
         try {
           busyBtn("btnSyncCal", "🤖 Analyzing " + (analyzed + 1) + "/" + toAnalyze.length + "…");
           notify("🤖 Analyzing “" + job.m.name + "”…", "info", 4000);
-          const rawAI = await callClaudeAPI(job.text);
-          let data;
-          try { data = extractAIJson(rawAI); }
-          catch (pe) { console.error("Auto-analyze: unparseable Claude reply for", job.m.name, "\n", rawAI); throw pe; }
+          const data = await analyzeTranscript(job.text);
           normalizeMeetingOutcomes(job.m);
           const d = dedupNewOutcomes(data, job.m);
           saveSelectedOutcomes(data, job.m, job.date,
@@ -5134,10 +5157,7 @@ async function analyzeAllTranscripts(){
     try {
       busyBtn("btnAnalyzePending", "🤖 Analyzing " + (++done) + "/" + jobs.length + "…");
       notify("🤖 Analyzing “" + m.name + "” (" + done + "/" + jobs.length + ")…", "info", 4000);
-      const rawAI = await callClaudeAPI(m.transcript);
-      let data;
-      try { data = extractAIJson(rawAI); }
-      catch (pe) { console.error("Analyze pending: unparseable Claude reply for", m.name, "\n", rawAI); throw pe; }
+      const data = await analyzeTranscript(m.transcript);
       normalizeMeetingOutcomes(m);
       const d = dedupNewOutcomes(data, m);
       // date outcomes to the latest session date found in the notes headers; today only if none found
@@ -5165,8 +5185,8 @@ setTimeout(() => {
   if (localStorage.getItem("gcalAutoSync") && localStorage.getItem("googleClientId")
       && d.getHours() >= 8 && localStorage.getItem("gcalLastAutoSync") !== today) {
     localStorage.setItem("gcalLastAutoSync", today);
-    syncGoogleCalendar();
-  }
+    syncGoogleCalendar().then(() => generateMorningBrief());
+  } else renderMorningBrief(); // re-show today's brief on later opens unless dismissed
 }, 2500);
 
 function saveClaudeApiKey(){
@@ -5241,6 +5261,31 @@ async function callClaudeAPI(transcript){
     "\n\nIMPORTANT: Respond with ONLY the JSON object. No preamble, no explanation, no markdown outside the JSON. If a section has no items, use an empty array.");
 }
 
+// Two-pass analysis: full extraction, then a second call whose only job is hunting missed items.
+// shortcut: no LLM gives guaranteed recall — the dedicated sweep pass catches most single-pass misses at ~2x a sub-cent cost
+async function analyzeTranscript(text){
+  const rawAI = await callClaudeAPI(text);
+  let data;
+  try { data = extractAIJson(rawAI); }
+  catch (pe) { console.error("Analyze: unparseable Claude reply\n", rawAI); throw pe; }
+  try {
+    const captured = ["decisions", "task_candidates", "risks"].flatMap(k => data[k] || [])
+      .concat((data.questions || []).map(q => typeof q === "string" ? q : q.text));
+    const extra = extractAIJson(await callClaude(
+      "A first pass extracted the items below from a meeting transcript. Re-read the transcript and return ONLY genuinely MISSED items — decisions, concrete action items (informal commitments like \"I'll check with X\" count, owner = speaker), unresolved risks/blockers (even ones stated as plain facts), and open questions.\n" +
+      "NOT a miss: different wording of a captured item, meeting logistics, greetings, status recaps with nothing new, vague intentions.\n" +
+      "Format items like the captured ones ([Owner:/Confirmed by:/Raised by: Name], tasks verb-first, Due: if a date was mentioned).\n" +
+      "Respond with ONLY this JSON, empty arrays if nothing was missed:\n" +
+      '{"decisions":[],"task_candidates":[],"risks":[],"questions":[{"text":"","answer":null}]}\n\n' +
+      "ALREADY CAPTURED:\n" + (captured.map(c => "- " + c).join("\n") || "(nothing)") +
+      "\n\nTranscript:\n<<<\n" + text + "\n>>>"));
+    ["decisions", "task_candidates", "risks", "questions"].forEach(k => {
+      if (Array.isArray(extra[k]) && extra[k].length) data[k] = (data[k] || []).concat(extra[k]);
+    });
+  } catch (e) { console.warn("Miss-sweep pass skipped:", e.message); } // first-pass result still saved
+  return data;
+}
+
 /* ---------- AI Pre-Meeting Brief ---------- */
 async function aiBriefPoints(){
   const el = document.getElementById("aiBriefOut");
@@ -5278,20 +5323,71 @@ function openAsk(){
   document.getElementById("askModal").style.display = "flex";
   document.getElementById("askInput").focus();
 }
+// shortcut: follow-up memory lives in this array for the current page session only; a reload starts fresh
+let askHistory = [];
 async function askData(){
-  const q = document.getElementById("askInput").value.trim();
+  const input = document.getElementById("askInput");
+  const q = input.value.trim();
   if (!q) return;
   if (!localStorage.getItem("claudeApiKey")) { notify("Save your Claude API key in Settings first", "error", 7000); return; }
   const out = document.getElementById("askOut");
   out.style.display = "block";
-  out.textContent = "✨ Thinking…";
+  const convo = () => askHistory.map(h => "You: " + h.q + "\n\n" + h.a).join("\n\n———\n\n");
+  out.textContent = (convo() ? convo() + "\n\n———\n\n" : "") + "You: " + q + "\n\n✨ Thinking…";
   try {
-    out.textContent = await callClaude(
+    const prior = askHistory.slice(-3).map(h => "Q: " + h.q + "\nA: " + h.a).join("\n\n");
+    const a = await callClaude(
       "Answer the question using ONLY the meeting/task data below. Be brief and specific; cite meeting names and dates. Today is " +
-      new Date().toDateString() + ". If the data doesn't contain the answer, say so plainly.\n\nQUESTION: " + q + "\n\nDATA:\n" + buildDataContext());
+      new Date().toDateString() + ". If the data doesn't contain the answer, say so plainly." +
+      (prior ? "\n\nEARLIER EXCHANGES (the question may be a follow-up to these):\n" + prior : "") +
+      "\n\nQUESTION: " + q + "\n\nDATA:\n" + buildDataContext());
+    askHistory.push({ q, a });
+    input.value = "";
+    out.textContent = convo();
+    out.scrollTop = out.scrollHeight;
   } catch (e) {
-    out.textContent = "Error: " + e.message;
+    out.textContent = (convo() ? convo() + "\n\n———\n\n" : "") + "Error: " + e.message;
   }
+}
+
+/* ---------- Morning brief ---------- */
+async function generateMorningBrief(force){
+  const today = new Date().toDateString();
+  if (!localStorage.getItem("claudeApiKey")) { if (force) notify("Save your Claude API key in Settings first", "error", 7000); return; }
+  if (!force && localStorage.getItem("morningBriefDate") === today) { renderMorningBrief(); return; }
+  const el = document.getElementById("morningBriefText");
+  document.getElementById("morningBrief").style.display = "block";
+  el.textContent = "✨ Preparing your day…";
+  try {
+    const events = JSON.parse(localStorage.getItem("gcalTodayEvents") || "[]");
+    const text = await callClaude(
+      "You are my PA. Write my morning brief from the data below. Today is " + today + ".\n" +
+      "Sections (skip any that are empty, no headers for empty ones):\n" +
+      "1. Today's meetings — time + name" + (events.length ? "" : " (none on calendar)") + ", one line each with the single most important thing to raise, if the data has one.\n" +
+      "2. Overdue & due today — my open tasks, most urgent first.\n" +
+      "3. Needs an answer — open questions older than 7 days.\n" +
+      "4. Watch — risks with no movement.\n" +
+      "Plain text, tight lines, no markdown, no preamble. Max ~15 lines.\n\n" +
+      "TODAY'S CALENDAR:\n" + (events.join("\n") || "(not synced)") + "\n\nDATA:\n" + buildDataContext());
+    localStorage.setItem("morningBriefDate", today);
+    localStorage.setItem("morningBriefText", text);
+    localStorage.removeItem("morningBriefDismissed");
+    renderMorningBrief();
+  } catch (e) {
+    el.textContent = "Brief failed: " + e.message;
+  }
+}
+function renderMorningBrief(){
+  const box = document.getElementById("morningBrief");
+  const today = new Date().toDateString();
+  if (localStorage.getItem("morningBriefDate") === today && localStorage.getItem("morningBriefDismissed") !== today) {
+    document.getElementById("morningBriefText").textContent = localStorage.getItem("morningBriefText") || "";
+    box.style.display = "block";
+  } else box.style.display = "none";
+}
+function dismissMorningBrief(){
+  localStorage.setItem("morningBriefDismissed", new Date().toDateString());
+  renderMorningBrief();
 }
 
 async function analyzeWithClaude(){
@@ -5390,6 +5486,19 @@ STRICT ANTI-OVERLAP RULES:
 - If the same subject appears in both Decisions and Next steps, put it in DECISIONS only.
 - Tiebreaker: Decision > Task > Risk > Question.
 
+NOISE FILTER — exclude these entirely, even if the notes pre-structured them:
+- Meeting logistics and housekeeping: scheduling the next call, recording/attendance remarks, greetings, thanks.
+- Status recaps that add no new decision, action, risk or open point.
+- Vague intentions with no concrete action or subject ("team to continue discussion", "we should sync more often").
+- Questions asked and fully settled on the spot with no follow-up needed — unless the answer itself is a decision (then record it as a DECISION).
+
+DON'T MISS — after classifying, re-scan the whole transcript for:
+- Informal commitments ("I'll take a look", "let me check with X") — these are TASKS with that speaker as owner.
+- Deadlines or dates mentioned anywhere — attach them to the matching task or decision.
+- Blockers stated as plain facts ("we're still waiting on access") — these are RISKS even if nobody flagged them.
+- Compound bullets: one item containing two distinct actions becomes two tasks.
+- When unsure whether an item matters, INCLUDE it (lowest fitting category); only drop what the noise filter names.
+
 OUTPUT FORMAT — return strict JSON only, no markdown, no explanation, no code fences:
 {
   "decisions": ["<concise statement> [Confirmed by: Name]"],
@@ -5403,6 +5512,7 @@ QUALITY CHECKS before returning:
 - Does any subject appear in more than one array? Remove the lower-priority duplicate.
 - Do all task_candidates start with a verb? Rewrite any that do not.
 - Are all decisions truly closed? Demote any that are still open.
+- Did the DON'T MISS re-scan run? Confirm informal commitments and factual blockers are captured.
 - answer should be null if the question was not discussed or answered in the meeting.
 - Do NOT wrap the JSON in markdown code fences or add any explanation text.
 
@@ -5439,6 +5549,19 @@ STRICT ANTI-OVERLAP RULES:
 - A Risk CANNOT also be a Question.
 - Tiebreaker: Decision > Task > Risk > Question.
 
+NOISE FILTER — exclude these entirely:
+- Meeting logistics and housekeeping: scheduling the next call, recording/attendance remarks, greetings, thanks.
+- Status recaps that add no new decision, action, risk or open point.
+- Vague intentions with no concrete action or subject ("team to continue discussion", "we should sync more often").
+- Questions asked and fully settled on the spot with no follow-up needed — unless the answer itself is a decision (then record it as a DECISION).
+
+DON'T MISS — after classifying, re-scan the whole transcript for:
+- Informal commitments ("I'll take a look", "let me check with X") — these are TASKS with that speaker as owner.
+- Deadlines or dates mentioned anywhere — attach them to the matching task or decision.
+- Blockers stated as plain facts ("we're still waiting on access") — these are RISKS even if nobody flagged them.
+- Compound bullets: one item containing two distinct actions becomes two tasks.
+- When unsure whether an item matters, INCLUDE it (lowest fitting category); only drop what the noise filter names.
+
 OUTPUT FORMAT — return strict JSON only, no markdown, no explanation, no code fences:
 {
   "decisions": ["<concise statement> [Confirmed by: Name]"],
@@ -5452,6 +5575,7 @@ QUALITY CHECKS before returning:
 - Does any subject appear in more than one array? Remove the lower-priority duplicate.
 - Do all task_candidates start with a verb? Rewrite any that do not.
 - Are all decisions truly closed? Demote any that are still open.
+- Did the DON'T MISS re-scan run? Confirm informal commitments and factual blockers are captured.
 - answer should be null if the question was not discussed or answered in the meeting.
 - Do NOT wrap the JSON in markdown code fences or add any explanation text.
 
